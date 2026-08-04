@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profiles — only owner can write
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId;
+    }
+
+    // Call records — require authentication, validate writes
+    match /artifacts/{appId}/public/data/calls/{callId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['fromName', 'fromNumber', 'assignment', 'priority', 'status'])
+        && request.resource.data.fromName is string
+        && request.resource.data.fromNumber is string
+        && request.resource.data.assignment is string
+        && request.resource.data.priority is string
+        && request.resource.data.status is string;
+
+      allow update: if request.auth != null;
+
+      allow delete: if request.auth != null && (
+        request.auth.token.email == 'luckyj5521@gmail.com' ||
+        request.auth.token.email == 'cmarkel@gmail.com'
+      );
+    }
+
+    // Deny everything else explicitly
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
