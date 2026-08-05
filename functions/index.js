@@ -93,6 +93,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                 fromNumber,
                 fromName,
                 toNumber,
+                direction: data.direction || 'unknown',
                 assignment: manualAssignment,
                 priority: manualPriority,
                 summary: manualSummary,
@@ -105,7 +106,10 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
 
             // 2. Process Audio with OpenAI Whisper & GPT-4o if recording is present
             // IMPORTANT: Awaited so Cloud Functions doesn't terminate before completion
-            if (recordingUrl && OPENAI_API_KEY) {
+            const duration = data.duration_seconds || data.duration || 0;
+            const skipTranscription = duration > 0 && duration < 15;
+
+            if (recordingUrl && OPENAI_API_KEY && !skipTranscription) {
                 const analysis = await processAudioAndAnalyze(callId, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber);
                 if (analysis) {
                     // Attach AI analysis back to the payload
@@ -125,9 +129,18 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                         summary: analysis.summary,
                         assignment: analysis.assignment,
                         priority: analysis.priority,
+                        employeeName: analysis.employee_name || null,
+                        isResolved: analysis.is_resolved || false,
+                        reason: analysis.reason || null,
                         status: "Waiting"
                     }, { merge: true });
                 }
+            } else if (skipTranscription) {
+                // Instantly update to Waiting with a short call summary
+                await callRef.set({
+                    summary: `Short call (${duration}s). No AI transcript generated.`,
+                    status: "Waiting"
+                }, { merge: true });
             }
 
             processedEvents.push(event);
@@ -176,7 +189,7 @@ async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToke
         if (mangoToken && !recordingUrl.includes("amazonaws.com")) {
             fetchOptions.headers = { "Authorization": `Bearer ${mangoToken}` };
         }
-        
+
         let audioRes;
         for (let attempt = 1; attempt <= 12; attempt++) {
             audioRes = await fetch(recordingUrl, fetchOptions);
@@ -234,9 +247,9 @@ Return a JSON object with:
 3. "priority": "NORMAL", "TODAY", "URGENT", or "ESCALATED". (CRITICAL: If the transcript mentions "prescription" or "prescriptions", priority MUST be "URGENT")
 4. "assignment": Route to one of ["Front Desk Supervisor", "Clinical / Labs", "Treatment Coordinator", "Billing", "Hygiene", "Pod 1", "Pod 2", "Pod 3"]. (CRITICAL: If the transcript mentions "payment plan", assignment MUST be "Treatment Coordinator")
 5. "reason": A short 3-4 word reason for the call.
-6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. If the employee does not explicitly state their own name, return null. Do NOT return the patient's name here.
+6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. Valid staff members are: Jen, Lisa, Jamie, Addison, Mariana, Brandy, Devin, Liz, Alessia, Marianne, Aubrey, Marah, Pam, Eylianna, Dan. If the employee is not one of these names, or if you only hear a name in the context of 'Is [Name] available?' or 'I'm calling for [Name]' (which is the patient), return null. Do NOT make up a name.
 7. "is_outbound": true if this is an outbound call from the office to a patient.
-8. "is_resolved": true if the patient's issue or complaint was fully resolved during this call.
+8. "is_resolved": true if the caller's request was completed, false if they need a callback or follow-up.
 
 Transcript: "${transcript}"
 `;
@@ -281,9 +294,9 @@ Transcript: "${transcript}"
             try {
                 const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
                 const q = callsRef.where("fromNumber", "==", toNumber)
-                                  .where("status", "!=", "Resolved");
+                    .where("status", "!=", "Resolved");
                 const snapshot = await q.get();
-                
+
                 if (!snapshot.empty) {
                     const batch = db.batch();
                     snapshot.forEach(doc => {

@@ -16,15 +16,52 @@ export default function LiveDispatch({ user, activeCalls, resolvedCalls, addCall
         return assigned.includes(filterQueue);
       });
 
-  const inboundCalls = filteredActive.filter((c) => {
-    const n = (c.fromName || c.name || '').toLowerCase();
-    return !n.includes('family dental');
-  });
+  const isCallOutbound = (c) => {
+    let isOutbound = false;
 
-  const outboundCalls = filteredActive.filter((c) => {
-    const n = (c.fromName || c.name || '').toLowerCase();
-    return n.includes('family dental');
-  });
+    if (c.direction === 'outbound') {
+      isOutbound = true;
+    } else if (c.direction === 'inbound') {
+      return false;
+    }
+
+    if (!isOutbound && c.rawEvent && typeof c.rawEvent === 'string') {
+      const match = c.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
+      if (match && match[1]) {
+        const dir = match[1].toLowerCase();
+        if (dir === 'outbound') isOutbound = true;
+        else if (dir === 'inbound') return false;
+      }
+    }
+
+    if (!isOutbound) {
+      if (c.isOutbound === true) {
+        isOutbound = true;
+      } else {
+        const n = (c.fromName || c.name || '').toLowerCase();
+        if (n.includes('family dental') && !n.includes('provider')) {
+          isOutbound = true;
+        }
+      }
+    }
+
+    if (isOutbound) {
+      const empName = (c.employeeName || '').toLowerCase().trim();
+      const validNames = [
+        'jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 
+        'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 
+        'pam', 'eylianna', 'dan'
+      ];
+      
+      // Strict whitelist: Only allow calls from known valid employees
+      if (!empName || !validNames.includes(empName)) return false;
+      return true;
+    }
+    return false;
+  };
+
+  const inboundCalls = filteredActive.filter((c) => !isCallOutbound(c));
+  const outboundCalls = filteredActive.filter((c) => isCallOutbound(c));
 
   const allCalls = [...(activeCalls || []), ...(resolvedCalls || [])];
 

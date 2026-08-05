@@ -95,7 +95,22 @@ export function useCalls(user) {
   }, [user]);
 
   const activeCalls = calls.filter((c) => c.status !== 'Resolved');
-  const resolvedCalls = calls.filter((c) => c.status === 'Resolved');
+  
+  const resolvedCalls = calls.filter((c) => {
+    if (c.status !== 'Resolved') return false;
+    
+    const now = new Date();
+    const resolvedTime = c.resolvedAt?.toMillis 
+      ? c.resolvedAt.toMillis() 
+      : (c.updatedAt?.toMillis ? c.updatedAt.toMillis() : 0);
+      
+    if (resolvedTime === 0) return false;
+    
+    const resolvedDate = new Date(resolvedTime);
+    return resolvedDate.getDate() === now.getDate() &&
+           resolvedDate.getMonth() === now.getMonth() &&
+           resolvedDate.getFullYear() === now.getFullYear();
+  });
 
   return {
     calls,
