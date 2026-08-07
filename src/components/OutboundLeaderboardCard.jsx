@@ -37,6 +37,48 @@ const getCurrentMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+const ModalCallItem = ({ call }) => {
+  const [showTranscript, setShowTranscript] = useState(false);
+  const displayName = call.fromName || call.name || 'Unknown Caller';
+  const displayPhone = call.fromNumber || call.phone || 'No phone provided';
+  const timeStr = typeof call.createdAt?.toDate === 'function' 
+    ? call.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+    : '';
+
+  return (
+    <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium flex flex-col gap-2">
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-black text-gray-800 uppercase tracking-wide">{displayName}</span>
+          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md w-fit">
+            {displayPhone}
+          </span>
+        </div>
+        <span className="text-xs text-gray-400 font-medium whitespace-nowrap">
+          {timeStr}
+        </span>
+      </div>
+      
+      {call.transcript && (
+        <div className="mt-2 border-t border-gray-100 pt-2">
+          <button 
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="text-[10px] font-bold text-gray-500 hover:text-blue-600 uppercase tracking-wider transition-colors"
+          >
+            {showTranscript ? 'HIDE TRANSCRIPT' : 'SEE TRANSCRIPT'}
+          </button>
+          
+          {showTranscript && (
+            <div className="mt-2 text-xs text-gray-600 font-medium bg-white p-3 rounded-lg border border-gray-200/60 whitespace-pre-wrap leading-relaxed">
+              {call.transcript}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function OutboundLeaderboardCard({ calls = [], officeLocation }) {
   const [timeframe, setTimeframe] = useState('day');
   const [selectedDate, setSelectedDate] = useState(getLocalToday());
@@ -316,15 +358,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
                       return empName === selectedEmployeeForModal;
                     })
                     .map((call, idx) => (
-                      <div key={call.callId || idx} className="p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-700 flex flex-col gap-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded-md">{call.fromNumber}</span>
-                          <span className="text-xs text-gray-400 font-medium">
-                            {typeof call.createdAt?.toDate === 'function' ? call.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                          </span>
-                        </div>
-                        <span className="text-xs text-gray-500 font-mono bg-white p-1.5 rounded border border-gray-100 truncate">ID: {call.callId}</span>
-                      </div>
+                      <ModalCallItem key={call.callId || call.id || idx} call={call} />
                     ))}
                 </div>
               </div>
