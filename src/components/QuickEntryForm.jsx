@@ -38,7 +38,7 @@ export default function QuickEntryForm({ onAddCall, onSuccess, onError }) {
         fromNumber: phone.trim().slice(0, 20),
         assignment: assign,
         priority,
-        reason: reason.trim().slice(0, 50) || undefined,
+        reason: reason.trim().slice(0, 50),
       });
       setName('');
       setPhone('');
