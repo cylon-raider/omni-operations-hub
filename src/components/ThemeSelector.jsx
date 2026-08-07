@@ -12,6 +12,7 @@ const THEMES = [
   { id: 'coral', name: 'Coral', label: 'Orange' },
   { id: 'malachite', name: 'Malachite', label: 'Teal' },
   { id: 'pearl', name: 'Pearl', label: 'Zinc' },
+  { id: 'high-contrast', name: 'High Contrast', label: 'Accessible' },
 ];
 
 export default function ThemeSelector() {
