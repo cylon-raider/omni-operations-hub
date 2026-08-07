@@ -138,6 +138,7 @@ export function useCalls(user, location = 'glendale') {
   // Data Filtering
   // --------------------------------------------------------------------------
   // We split the master list of calls into two lists for the UI: active and resolved.
+  const activeCalls = calls.filter((c) => c.status !== 'Resolved');
   
   const resolvedCalls = calls.filter((c) => {
     if (c.status !== 'Resolved') return false;
