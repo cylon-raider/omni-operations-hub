@@ -80,6 +80,8 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             // Truncate rawEvent to prevent unbounded document sizes (Firestore 1MB limit)
             const truncatedRawEvent = JSON.stringify(data).slice(0, 5000);
 
+            const location = (req.query.location || "glendale").toLowerCase();
+
             // 1. Write call record to Firestore (Instant Web App update)
             const callRef = db.collection("artifacts")
                 .doc(APP_ID)
@@ -93,6 +95,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                 fromNumber,
                 fromName,
                 toNumber,
+                location: location,
                 direction: data.direction || 'unknown',
                 assignment: manualAssignment,
                 priority: manualPriority,
@@ -110,7 +113,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             const skipTranscription = duration > 0 && duration < 15;
 
             if (recordingUrl && OPENAI_API_KEY && !skipTranscription) {
-                const analysis = await processAudioAndAnalyze(callId, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber);
+                const analysis = await processAudioAndAnalyze(callId, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber, location, data.direction || 'unknown');
                 if (analysis) {
                     // Attach AI analysis back to the payload
                     const target = event.payload ? event.payload : event;
@@ -123,6 +126,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                     target.employeeName = analysis.employee_name;
                     target.isOutbound = analysis.is_outbound;
                     target.isResolved = analysis.is_resolved;
+                    target.location = location;
 
                     // Update Firestore with the completed AI analysis
                     await callRef.set({
@@ -132,15 +136,24 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                         employeeName: analysis.employee_name || null,
                         isResolved: analysis.is_resolved || false,
                         reason: analysis.reason || null,
-                        status: "Waiting"
+                        status: "Waiting",
+                        location: location
                     }, { merge: true });
                 }
             } else if (skipTranscription) {
                 // Instantly update to Waiting with a short call summary
+                const target = event.payload ? event.payload : event;
+                target.location = location;
+                
                 await callRef.set({
                     summary: `Short call (${duration}s). No AI transcript generated.`,
-                    status: "Waiting"
+                    status: "Waiting",
+                    location: location
                 }, { merge: true });
+            } else {
+                // Fallback for missing recordings / test calls
+                const target = event.payload ? event.payload : event;
+                target.location = location;
             }
 
             processedEvents.push(event);
@@ -175,7 +188,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
  * Process call recording with OpenAI Whisper (transcription) & GPT-4o (analysis).
  * Uses Node.js-compatible APIs (Buffer, form-data package).
  */
-async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToken, toNumber) {
+async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToken, toNumber, location, direction) {
     const callRef = db.collection("artifacts")
         .doc(APP_ID)
         .collection("public")
@@ -238,16 +251,20 @@ async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToke
             throw new Error("Whisper returned empty transcript");
         }
 
+        const glendaleStaff = "Jen, Lisa, Jamie, Addison, Mariana, Brandy, Devin, Liz, Alessia, Marianne, Aubrey, Marah, Pam, Eylianna, Dan";
+        const litchfieldStaff = "Jen, Melia, Cynthia, Lupita, Rachel, Aron";
+        const validStaff = location === 'litchfield' ? litchfieldStaff : glendaleStaff;
+
         // Analyze with GPT-4o-mini
         const gptPrompt = `
-Analyze this dental office call transcript.
-Return a JSON object with:
-1. "summary": A 1-2 sentence summary.
-2. "sentiment": "Positive", "Neutral", "Negative", or "Angry".
+Analyze this dental office call.
+Return a JSON object with the following properties:
+1. "summary": A concise 1-2 sentence summary of the patient's request or issue.
+2. "sentiment": A brief assessment of the caller's mood (e.g. "Frustrated", "Neutral", "Happy", "Urgent").
 3. "priority": "NORMAL", "TODAY", "URGENT", or "ESCALATED". (CRITICAL: If the transcript mentions "prescription" or "prescriptions", priority MUST be "URGENT")
 4. "assignment": Route to one of ["Front Desk Supervisor", "Clinical / Labs", "Treatment Coordinator", "Billing", "Hygiene", "Pod 1", "Pod 2", "Pod 3"]. (CRITICAL: If the transcript mentions "payment plan", assignment MUST be "Treatment Coordinator")
 5. "reason": A short 3-4 word reason for the call.
-6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. Valid staff members are: Jen, Lisa, Jamie, Addison, Mariana, Brandy, Devin, Liz, Alessia, Marianne, Aubrey, Marah, Pam, Eylianna, Dan. If the employee is not one of these names, or if you only hear a name in the context of 'Is [Name] available?' or 'I'm calling for [Name]' (which is the patient), return null. Do NOT make up a name.
+6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. Valid staff members for this office are: ${validStaff}. If the employee is not one of these names, or if you only hear a name in the context of 'Is [Name] available?' or 'I'm calling for [Name]' (which is the patient), return null. Do NOT make up a name.
 7. "is_outbound": true if this is an outbound call from the office to a patient.
 8. "is_resolved": true if the caller's request was completed, false if they need a callback or follow-up.
 
@@ -290,7 +307,7 @@ Transcript: "${transcript}"
         });
 
         // If it's an outbound call that resolved the issue, auto-resolve any active inbound calls from that patient
-        if (analysis.is_outbound && analysis.is_resolved && toNumber) {
+        if (direction === 'outbound' && analysis.is_outbound && analysis.is_resolved && toNumber) {
             try {
                 const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
                 const q = callsRef.where("fromNumber", "==", toNumber)
@@ -326,4 +343,83 @@ Transcript: "${transcript}"
         });
     }
 }
+exports.migrateDb = onRequest({ invoker: "public" }, async (req, res) => {
+    try {
+        const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
+        const snapshot = await callsRef.get();
+        
+        let count = 0;
+        let batch = db.batch();
+        
+        for (const doc of snapshot.docs) {
+            if (!doc.data().location) {
+                batch.update(doc.ref, { location: "glendale" });
+                count++;
+                
+                if (count % 400 === 0) {
+                    await batch.commit();
+                    batch = db.batch();
+                }
+            }
+        }
+        
+        if (count % 400 !== 0) {
+            await batch.commit();
+        }
+        
+        res.json({ success: true, updated: count });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+exports.reprocessFailed = onRequest({ invoker: "public", timeoutSeconds: 300 }, async (req, res) => {
+    try {
+        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+        const MANGO_TOKEN = process.env.MANGO_TOKEN;
+        
+        const limit = parseInt(req.query.limit) || 10;
+        const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
+        
+        // Find calls with Transcription Error
+        const snapshot = await callsRef.where("status", "==", "Transcription Error").limit(limit).get();
+        
+        if (snapshot.empty) {
+            return res.json({ success: true, message: "No failed calls found." });
+        }
+        
+        const promises = snapshot.docs.map(async (docSnap) => {
+            const data = docSnap.data();
+            const location = data.location || "glendale";
+            const toNumber = data.toNumber || "";
+            const recordingUrl = data.recordingUrl || data.recording_url;
+            
+            if (recordingUrl && OPENAI_API_KEY) {
+                const analysis = await processAudioAndAnalyze(docSnap.id, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber, location, data.direction || 'unknown');
+                if (analysis) {
+                    await docSnap.ref.set({
+                        summary: analysis.summary || "Call processed",
+                        sentiment: analysis.sentiment || "Neutral",
+                        priority: analysis.priority || "NORMAL",
+                        assignment: analysis.assignment || "Front Desk Supervisor",
+                        employeeName: analysis.employee_name || null,
+                        isResolved: analysis.is_resolved || false,
+                        reason: analysis.reason || null,
+                        status: "Waiting",
+                        location: location
+                    }, { merge: true });
+                }
+            }
+        });
+        
+        await Promise.all(promises);
+        
+        res.json({ success: true, reprocessed: snapshot.size });
+    } catch (e) {
+        console.error("Reprocess error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 exports.debugDb = require('./debug').debugDb;
+exports.fixCalls = require('./debug').fixCalls;

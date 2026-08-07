@@ -5,14 +5,14 @@ const PRIORITY_STYLES = {
   URGENT: 'bg-red-100 text-red-700',
   ESCALATED: 'bg-red-100 text-red-700',
   TODAY: 'bg-amber-100 text-amber-800',
-  NORMAL: 'bg-emerald-100 text-emerald-800',
+  NORMAL: 'bg-primary-100 text-primary-800',
 };
 
 const STATUS_STYLES = {
   Waiting: 'bg-amber-50 text-amber-700 border-amber-200',
   'In Progress': 'bg-blue-50 text-blue-700 border-blue-200',
   Processing: 'bg-purple-50 text-purple-700 border-purple-200',
-  Resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Resolved: 'bg-primary-50 text-primary-700 border-primary-200',
   'Transcription Error': 'bg-red-50 text-red-700 border-red-200',
 };
 
@@ -85,7 +85,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
           <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
             <span className="flex items-center gap-1"><Phone size={12} /> {displayPhone}</span>
             <span>•</span>
-            <span className="font-medium text-emerald-700">{displayAssignment}</span>
+            <span className="font-medium text-primary-700">{displayAssignment}</span>
             {call.createdAt && (
               <>
                 <span>•</span>
@@ -125,7 +125,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
             <select
               value={editAssign}
               onChange={(e) => setEditAssign(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-emerald-500"
+              className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-primary-500"
             >
               {QUEUES.map((q) => (
                 <option key={q} value={q}>{q}</option>
@@ -137,7 +137,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
             <select
               value={editPriority}
               onChange={(e) => setEditPriority(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-emerald-500 font-bold"
+              className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-primary-500 font-bold"
             >
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>{p}</option>
@@ -147,7 +147,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
           <div className="flex gap-2">
             <button
               onClick={handleSaveEdit}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors"
+              className="px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-lg text-xs transition-colors"
             >
               Save
             </button>
@@ -176,7 +176,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
               className={`px-3 py-1.5 font-bold rounded-lg text-xs transition-colors ${
                 confirming === 'delete'
                   ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-primary-600 hover:bg-primary-700 text-white'
               }`}
             >
               Confirm
@@ -204,7 +204,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
           )}
           <button
             onClick={() => setConfirming('resolve')}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
           >
             <CheckCircle size={12} /> Complete
           </button>

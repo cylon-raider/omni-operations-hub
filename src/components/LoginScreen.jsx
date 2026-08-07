@@ -47,12 +47,12 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-emerald-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-primary-900 flex items-center justify-center p-4">
       {/* Background Pattern */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-emerald-600/8 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-500/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary-600/8 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/5 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md">
@@ -60,7 +60,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
         <div className="text-center mb-8">
           <img src="/logo.png" alt="FDS Logo" className="w-20 h-20 mx-auto rounded-2xl object-contain mb-4 shadow-lg shadow-black/20" />
           <h1 className="text-3xl font-black text-white tracking-tight">FDS HUB</h1>
-          <p className="text-emerald-400/80 text-sm font-bold uppercase tracking-widest mt-1">Command Center</p>
+          <p className="text-primary-400/80 text-sm font-bold uppercase tracking-widest mt-1">Command Center</p>
         </div>
 
         {/* Card */}
@@ -83,8 +83,8 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
           )}
 
           {resetSent && (
-            <div className="mb-4 p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-xl">
-              <p className="text-sm text-emerald-300 font-medium">
+            <div className="mb-4 p-3 bg-primary-500/15 border border-primary-500/30 rounded-xl">
+              <p className="text-sm text-primary-300 font-medium">
                 Password reset email sent! Check your inbox.
               </p>
             </div>
@@ -105,7 +105,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
                     maxLength={50}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500/50 focus:bg-white/8 transition-colors"
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500/50 focus:bg-white/8 transition-colors"
                     placeholder="Jeanette Markel"
                   />
                 </div>
@@ -124,7 +124,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500/50 focus:bg-white/8 transition-colors"
+                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500/50 focus:bg-white/8 transition-colors"
                   placeholder="you@fdsdental.com"
                 />
               </div>
@@ -144,7 +144,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
                     minLength={6}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500/50 focus:bg-white/8 transition-colors"
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500/50 focus:bg-white/8 transition-colors"
                     placeholder="••••••••"
                   />
                 </div>
@@ -165,7 +165,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
                     minLength={6}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500/50 focus:bg-white/8 transition-colors"
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500/50 focus:bg-white/8 transition-colors"
                     placeholder="••••••••"
                   />
                 </div>
@@ -175,7 +175,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+              className="w-full py-3 bg-primary-600 hover:bg-primary-500 disabled:bg-primary-800 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-primary-900/30"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -194,13 +194,13 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
               <>
                 <button
                   onClick={() => switchMode('register')}
-                  className="block w-full text-xs text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
+                  className="block w-full text-xs text-primary-400 hover:text-primary-300 font-semibold transition-colors"
                 >
                   Don't have an account? Create one
                 </button>
                 <button
                   onClick={() => switchMode('reset')}
-                  className="block w-full text-xs text-gray-400 hover:text-emerald-400 font-medium transition-colors"
+                  className="block w-full text-xs text-gray-400 hover:text-primary-400 font-medium transition-colors"
                 >
                   Forgot your password?
                 </button>
@@ -208,7 +208,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
             ) : (
               <button
                 onClick={() => switchMode('login')}
-                className="text-xs text-gray-400 hover:text-emerald-400 font-medium transition-colors"
+                className="text-xs text-gray-400 hover:text-primary-400 font-medium transition-colors"
               >
                 ← Back to Sign In
               </button>

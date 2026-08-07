@@ -26,7 +26,7 @@ function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 border-3 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4" />
+        <div className="w-12 h-12 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto mb-4" />
         <p className="text-sm font-bold text-gray-500">Loading FDS Hub...</p>
       </div>
     </div>
@@ -35,7 +35,8 @@ function LoadingSkeleton() {
 
 export default function App() {
   const { user, loading: authLoading, error: authError, setError: setAuthError, login, register, logout, resetPassword } = useAuth();
-  const { activeCalls, resolvedCalls, loading: callsLoading, addCall, updateCall, resolveCall, deleteCall } = useCalls(user);
+  const [officeLocation, setOfficeLocation] = useState('glendale');
+  const { calls, activeCalls, resolvedCalls, loading: callsLoading, addCall, updateCall, resolveCall, deleteCall } = useCalls(user, officeLocation);
   const { showToast, ToastContainer } = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -99,12 +100,12 @@ export default function App() {
             <div className="flex items-center gap-3">
               {callsLoading && location.pathname === '/' && (
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-white px-3 py-1.5 rounded-xl border border-gray-200">
-                  <div className="w-3 h-3 border-2 border-gray-300 border-t-emerald-500 rounded-full animate-spin" />
+                  <div className="w-3 h-3 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
                   Loading...
                 </div>
               )}
               <div className="text-xs font-bold text-gray-500 bg-white px-3 py-1.5 rounded-xl border border-gray-200 flex items-center gap-1.5 w-fit">
-                <Clock size={14} className="text-emerald-600" /> Realtime Sync Active
+                <Clock size={14} className="text-primary-600" /> Realtime Sync Active
               </div>
             </div>
           </div>
@@ -116,6 +117,7 @@ export default function App() {
               element={
                 <LiveDispatch
                   user={user}
+                  calls={calls}
                   activeCalls={activeCalls}
                   resolvedCalls={resolvedCalls}
                   addCall={addCall}
@@ -123,6 +125,8 @@ export default function App() {
                   resolveCall={resolveCall}
                   deleteCall={deleteCall}
                   onToast={showToast}
+                  officeLocation={officeLocation}
+                  setOfficeLocation={setOfficeLocation}
                 />
               }
             />

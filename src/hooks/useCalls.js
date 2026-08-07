@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
-  serverTimestamp, query, orderBy,
+  serverTimestamp, query, orderBy, where
 } from 'firebase/firestore';
 import { db, APP_ID } from '../config/firebase';
 
 const CALLS_PATH = `artifacts/${APP_ID}/public/data/calls`;
 
-export function useCalls(user) {
+export function useCalls(user, location = 'glendale') {
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,7 +19,8 @@ export function useCalls(user) {
     }
 
     const q = query(
-      collection(db, CALLS_PATH)
+      collection(db, CALLS_PATH),
+      where('location', '==', location)
     );
 
     const unsubscribe = onSnapshot(
@@ -57,7 +58,7 @@ export function useCalls(user) {
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, location]);
 
   const addCall = useCallback(async (callData) => {
     if (!user) throw new Error('Not authenticated');

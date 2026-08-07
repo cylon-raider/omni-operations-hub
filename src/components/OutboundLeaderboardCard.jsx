@@ -37,7 +37,7 @@ const getCurrentMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-export default function OutboundLeaderboardCard({ calls }) {
+export default function OutboundLeaderboardCard({ calls = [], officeLocation }) {
   const [timeframe, setTimeframe] = useState('day');
   const [selectedDate, setSelectedDate] = useState(getLocalToday());
   const [selectedWeek, setSelectedWeek] = useState(getCurrentWeek());
@@ -82,12 +82,17 @@ export default function OutboundLeaderboardCard({ calls }) {
       }
 
       if (isOutbound) {
-        const empName = (c.employeeName || '').toLowerCase().trim();
-        const validNames = [
-          'jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy',
-          'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah',
-          'pam', 'eylianna', 'dan'
-        ];
+        const rawName = (c.employeeName || '').toLowerCase().trim();
+        let empName = rawName;
+        
+        if (NAME_ALIASES[rawName]) {
+          if (NAME_ALIASES[rawName] === 'IGNORE') return false;
+          empName = NAME_ALIASES[rawName].toLowerCase();
+        }
+
+        const glendaleStaff = ['jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 'pam', 'eylianna', 'dan'];
+        const litchfieldStaff = ['jen', 'melia', 'cynthia', 'lupita', 'rachel', 'aron'];
+        const validNames = officeLocation === 'litchfield' ? litchfieldStaff : glendaleStaff;
 
         // Strict whitelist: Only allow calls from known valid employees
         if (!empName || !validNames.includes(empName)) return false;
@@ -181,7 +186,7 @@ export default function OutboundLeaderboardCard({ calls }) {
         </div>
 
         {/* Timeframe Filters */}
-        <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100">
+        <div className="flex items-center flex-wrap md:flex-nowrap gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100 w-full md:w-auto">
           <div className="flex items-center">
             <button
               onClick={() => setTimeframe('day')}

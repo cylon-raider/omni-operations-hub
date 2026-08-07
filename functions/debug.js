@@ -8,20 +8,168 @@ const db = admin.firestore();
 
 exports.debugDb = onRequest({ invoker: "public" }, async (req, res) => {
     try {
-        const snapshot = await db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls").orderBy("createdAt", "desc").limit(20).get();
+        const start = new Date("2026-08-05T00:00:00-07:00");
+        const end = new Date("2026-08-06T00:00:00-07:00");
+        
+        const snapshot = await db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls")
+            .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(start))
+            .where("createdAt", "<", admin.firestore.Timestamp.fromDate(end))
+            .get();
+            
         const calls = [];
         snapshot.forEach(doc => calls.push({ id: doc.id, ...doc.data() }));
         
-        const rootSnapshot = await db.collection("calls").limit(20).get();
-        const rootCalls = [];
-        rootSnapshot.forEach(doc => rootCalls.push({ id: doc.id, ...doc.data() }));
-
-        res.json({
-            success: true,
-            path: "artifacts/fds-operations-hub/public/data/calls",
-            calls: calls,
-            rootCalls: rootCalls
+        const outboundCalls = calls.filter((c) => {
+          let isOutbound = false;
+          if (c.direction === 'outbound') {
+            isOutbound = true;
+          } else if (c.direction === 'inbound') {
+            return false;
+          }
+          if (!isOutbound && c.rawEvent && typeof c.rawEvent === 'string') {
+            const match = c.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
+            if (match && match[1]) {
+              const dir = match[1].toLowerCase();
+              if (dir === 'outbound') isOutbound = true;
+              else if (dir === 'inbound') return false;
+            }
+          }
+          if (!isOutbound) {
+            if (c.isOutbound === true) {
+              isOutbound = true;
+            } else {
+              const n = (c.fromName || c.name || '').toLowerCase();
+              if (n.includes('family dental') && !n.includes('provider')) {
+                isOutbound = true;
+              }
+            }
+          }
+          return isOutbound;
         });
+
+        const NAME_ALIASES = {
+          'devon': 'DEVIN', 'alacia': 'ALICIA', 'iliana': 'EYLIANNA',
+          'aliana': 'EYLIANNA', 'eliana': 'EYLIANNA', 'alicia': 'ALESSIA',
+          'lisa': 'ALESSIA', 'mara': 'MARAH', 'mary ann': 'MARIANNE',
+          'b': 'IGNORE', 'bea': 'IGNORE', 'tim': 'IGNORE'
+        };
+
+        const tallies = {};
+        let blankCount = 0;
+        
+        outboundCalls.forEach(c => {
+          const rawName = (c.employeeName || '').toLowerCase().trim();
+          if (!rawName || rawName === 'unknown') {
+              blankCount++;
+              return;
+          }
+          let empName = rawName;
+          if (NAME_ALIASES[rawName]) {
+            if (NAME_ALIASES[rawName] === 'IGNORE') return;
+            empName = NAME_ALIASES[rawName].toLowerCase();
+          }
+          tallies[empName] = (tallies[empName] || 0) + 1;
+        });
+
+        res.json({ total: calls.length, outbound: outboundCalls.length, tallies, blankCount });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+exports.realTally = onRequest({ invoker: "public" }, async (req, res) => {
+    try {
+        const start = new Date("2026-08-05T00:00:00-07:00");
+        const end = new Date("2026-08-06T00:00:00-07:00");
+        
+        const snapshot = await db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls")
+            .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(start))
+            .where("createdAt", "<", admin.firestore.Timestamp.fromDate(end))
+            .get();
+            
+        const calls = [];
+        snapshot.forEach(doc => calls.push({ id: doc.id, ...doc.data() }));
+        
+        const outboundCalls = calls.filter((c) => {
+          let isOutbound = false;
+          if (c.direction === 'outbound') {
+            isOutbound = true;
+          } else if (c.direction === 'inbound') {
+            return false;
+          }
+          if (!isOutbound && c.rawEvent && typeof c.rawEvent === 'string') {
+            const match = c.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
+            if (match && match[1]) {
+              const dir = match[1].toLowerCase();
+              if (dir === 'outbound') isOutbound = true;
+              else if (dir === 'inbound') return false;
+            }
+          }
+          if (!isOutbound) {
+            if (c.isOutbound === true) {
+              isOutbound = true;
+            } else {
+              const n = (c.fromName || c.name || '').toLowerCase();
+              if (n.includes('family dental') && !n.includes('provider')) {
+                isOutbound = true;
+              }
+            }
+          }
+          return isOutbound;
+        });
+
+        const NAME_ALIASES = {
+          'devon': 'DEVIN', 'alacia': 'ALICIA', 'iliana': 'EYLIANNA',
+          'aliana': 'EYLIANNA', 'eliana': 'EYLIANNA', 'alicia': 'ALESSIA',
+          'lisa': 'ALESSIA', 'mara': 'MARAH', 'mary ann': 'MARIANNE',
+          'b': 'IGNORE', 'bea': 'IGNORE', 'tim': 'IGNORE'
+        };
+
+        const tallies = {};
+        let blankCount = 0;
+        
+        outboundCalls.forEach(c => {
+          const rawName = (c.employeeName || '').toLowerCase().trim();
+          if (!rawName || rawName === 'unknown') {
+              blankCount++;
+              return;
+          }
+          let empName = rawName;
+          if (NAME_ALIASES[rawName]) {
+            if (NAME_ALIASES[rawName] === 'IGNORE') return;
+            empName = NAME_ALIASES[rawName].toLowerCase();
+          }
+          tallies[empName] = (tallies[empName] || 0) + 1;
+        });
+
+        res.json({ total: calls.length, outbound: outboundCalls.length, tallies, blankCount });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+exports.fixCalls = onRequest({ invoker: "public" }, async (req, res) => {
+    try {
+        const callsRef = db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls");
+        
+        // Find outbound calls that were wrongly resolved by the AI.
+        const snapshot = await callsRef.where("direction", "==", "outbound").where("status", "==", "Resolved").get();
+        let count = 0;
+        let batch = db.batch();
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.resolvedBy && data.resolvedBy.length < 20) { // e.g. "Marah", "Devin", "Auto-Resolve"
+                batch.update(doc.ref, {
+                    status: "Waiting",
+                    isResolved: false,
+                    resolvedBy: admin.firestore.FieldValue.delete(),
+                    resolvedAt: admin.firestore.FieldValue.delete()
+                });
+                count++;
+            }
+        });
+        await batch.commit();
+        res.json({ success: true, fixedCount: count });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

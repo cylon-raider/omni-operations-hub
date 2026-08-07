@@ -1,1 +1,154 @@
 @import "tailwindcss";
+
+:root {
+  /* Default Theme: Emerald */
+  --theme-50: #ecfdf5;
+  --theme-100: #d1fae5;
+  --theme-200: #a7f3d0;
+  --theme-300: #6ee7b7;
+  --theme-400: #34d399;
+  --theme-500: #10b981;
+  --theme-600: #059669;
+  --theme-700: #047857;
+  --theme-800: #065f46;
+  --theme-900: #064e3b;
+}
+
+[data-theme="sapphire"] {
+  /* Sapphire (Blue) */
+  --theme-50: #eff6ff;
+  --theme-100: #dbeafe;
+  --theme-200: #bfdbfe;
+  --theme-300: #93c5fd;
+  --theme-400: #60a5fa;
+  --theme-500: #3b82f6;
+  --theme-600: #2563eb;
+  --theme-700: #1d4ed8;
+  --theme-800: #1e40af;
+  --theme-900: #1e3a8a;
+}
+
+[data-theme="citrine"] {
+  /* Citrine (Amber) */
+  --theme-50: #fffbeb;
+  --theme-100: #fef3c7;
+  --theme-200: #fde68a;
+  --theme-300: #fcd34d;
+  --theme-400: #fbbf24;
+  --theme-500: #f59e0b;
+  --theme-600: #d97706;
+  --theme-700: #b45309;
+  --theme-800: #92400e;
+  --theme-900: #78350f;
+}
+
+[data-theme="amethyst"] {
+  /* Amethyst (Purple) */
+  --theme-50: #faf5ff;
+  --theme-100: #f3e8ff;
+  --theme-200: #e9d5ff;
+  --theme-300: #d8b4fe;
+  --theme-400: #c084fc;
+  --theme-500: #a855f7;
+  --theme-600: #9333ea;
+  --theme-700: #7e22ce;
+  --theme-800: #6b21a8;
+  --theme-900: #581c87;
+}
+
+[data-theme="ruby"] {
+  /* Ruby (Rose) */
+  --theme-50: #fff1f2;
+  --theme-100: #ffe4e6;
+  --theme-200: #fecdd3;
+  --theme-300: #fda4af;
+  --theme-400: #fb7185;
+  --theme-500: #f43f5e;
+  --theme-600: #e11d48;
+  --theme-700: #be123c;
+  --theme-800: #9f1239;
+  --theme-900: #881337;
+}
+
+[data-theme="obsidian"] {
+  /* Obsidian (Slate) */
+  --theme-50: #f8fafc;
+  --theme-100: #f1f5f9;
+  --theme-200: #e2e8f0;
+  --theme-300: #cbd5e1;
+  --theme-400: #94a3b8;
+  --theme-500: #64748b;
+  --theme-600: #475569;
+  --theme-700: #334155;
+  --theme-800: #1e293b;
+  --theme-900: #0f172a;
+}
+
+[data-theme="aqua"] {
+  /* Aqua (Cyan) */
+  --theme-50: #ecfeff;
+  --theme-100: #cffafe;
+  --theme-200: #a5f3fc;
+  --theme-300: #67e8f9;
+  --theme-400: #22d3ee;
+  --theme-500: #06b6d4;
+  --theme-600: #0891b2;
+  --theme-700: #0e7490;
+  --theme-800: #155e75;
+  --theme-900: #164e63;
+}
+
+[data-theme="coral"] {
+  /* Coral (Orange) */
+  --theme-50: #fff7ed;
+  --theme-100: #ffedd5;
+  --theme-200: #fed7aa;
+  --theme-300: #fdba74;
+  --theme-400: #fb923c;
+  --theme-500: #f97316;
+  --theme-600: #ea580c;
+  --theme-700: #c2410c;
+  --theme-800: #9a3412;
+  --theme-900: #7c2d12;
+}
+
+[data-theme="malachite"] {
+  /* Malachite (Teal) */
+  --theme-50: #f0fdfa;
+  --theme-100: #ccfbf1;
+  --theme-200: #99f6e4;
+  --theme-300: #5eead4;
+  --theme-400: #2dd4bf;
+  --theme-500: #14b8a6;
+  --theme-600: #0d9488;
+  --theme-700: #0f766e;
+  --theme-800: #115e59;
+  --theme-900: #134e4a;
+}
+
+[data-theme="pearl"] {
+  /* Pearl (Zinc) */
+  --theme-50: #fafafa;
+  --theme-100: #f4f4f5;
+  --theme-200: #e4e4e7;
+  --theme-300: #d4d4d8;
+  --theme-400: #a1a1aa;
+  --theme-500: #71717a;
+  --theme-600: #52525b;
+  --theme-700: #3f3f46;
+  --theme-800: #27272a;
+  --theme-900: #18181b;
+}
+
+@theme {
+  --color-primary-50: var(--theme-50);
+  --color-primary-100: var(--theme-100);
+  --color-primary-200: var(--theme-200);
+  --color-primary-300: var(--theme-300);
+  --color-primary-400: var(--theme-400);
+  --color-primary-500: var(--theme-500);
+  --color-primary-600: var(--theme-600);
+  --color-primary-700: var(--theme-700);
+  --color-primary-800: var(--theme-800);
+  --color-primary-900: var(--theme-900);
+}

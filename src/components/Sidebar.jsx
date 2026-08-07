@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Receipt, DollarSign, Stethoscope,
   FileText, Activity, LogOut, X,
 } from 'lucide-react';
+import ThemeSelector from './ThemeSelector';
 
 const mainLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Live Dispatch', size: 'main' },
@@ -42,7 +43,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
             <img src="/logo.png" alt="FDS Logo" className="w-10 h-10 rounded-lg object-contain" />
             <div>
               <h1 className="font-black text-xl text-gray-900 tracking-tight">FDS HUB</h1>
-              <p className="text-xs text-emerald-600 font-bold uppercase tracking-widest mt-0.5">
+              <p className="text-xs text-primary-600 font-bold uppercase tracking-widest mt-0.5">
                 Command Center
               </p>
             </div>
@@ -71,7 +72,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
                   className={({ isActive }) =>
                     `w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm transition-colors ${
                       isActive
-                        ? 'bg-emerald-50 text-emerald-700'
+                        ? 'bg-primary-50 text-primary-700'
                         : 'text-gray-600 hover:bg-gray-50'
                     }`
                   }
@@ -96,7 +97,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
                   className={({ isActive }) =>
                     `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
                       isActive
-                        ? 'bg-emerald-50 text-emerald-700'
+                        ? 'bg-primary-50 text-primary-700'
                         : 'text-gray-500 hover:bg-gray-50'
                     }`
                   }
@@ -112,14 +113,15 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
         {/* User Footer */}
         <div className="p-4 border-t border-gray-100 space-y-2">
           <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-xl">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xs">
+            <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-800 font-black flex items-center justify-center text-xs">
               {userInitial}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-bold text-gray-800 truncate">{userName}</div>
-              <div className="text-[10px] text-emerald-600 font-bold uppercase">Staff</div>
+              <div className="text-[10px] text-primary-600 font-bold uppercase">Staff</div>
             </div>
           </div>
+          <ThemeSelector />
           <button
             onClick={onLogout}
             className="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-xs font-bold text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors border border-gray-200 hover:border-red-200"
