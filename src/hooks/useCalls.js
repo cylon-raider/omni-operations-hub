@@ -100,11 +100,12 @@ export function useCalls(user, location = 'glendale') {
     if (!user) throw new Error('Not authenticated');
     return addDoc(collection(db, CALLS_PATH), {
       ...callData,
+      location,
       status: 'Waiting',
       createdAt: serverTimestamp(), // Let the Google servers stamp the exact time
       createdBy: user.uid,
     });
-  }, [user]);
+  }, [user, location]);
 
   // UPDATE an existing call (e.g., claiming a call)
   const updateCall = useCallback(async (callId, updates) => {
