@@ -39,8 +39,21 @@ const getCurrentMonth = () => {
 
 const ModalCallItem = ({ call }) => {
   const [showTranscript, setShowTranscript] = useState(false);
-  const displayName = call.fromName || call.name || 'Unknown Caller';
-  const displayPhone = call.fromNumber || call.phone || 'No phone provided';
+  const isOutbound = call.direction === 'outbound' || call.isOutbound;
+  
+  let displayName = 'Unknown Caller';
+  let displayPhone = 'No phone provided';
+
+  if (isOutbound) {
+    // For outbound calls, the clinic is making the call. The patient is the destination.
+    displayName = call.patientName || call.toName || call.fromName || 'Unknown Patient';
+    if (displayName.toLowerCase().includes('family dental')) displayName = 'Unknown Patient';
+    displayPhone = call.toNumber || call.fromNumber || 'No phone provided';
+  } else {
+    displayName = call.fromName || call.name || 'Unknown Caller';
+    displayPhone = call.fromNumber || call.phone || 'No phone provided';
+  }
+
   const timeStr = typeof call.createdAt?.toDate === 'function' 
     ? call.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
     : '';

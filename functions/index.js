@@ -144,6 +144,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                     target.sentiment = analysis.sentiment;
                     target.reason = analysis.reason;
                     target.employeeName = analysis.employee_name;
+                    target.patientName = analysis.patient_name;
                     target.isOutbound = analysis.is_outbound;
                     target.isResolved = analysis.is_resolved;
                     target.location = location;
@@ -154,6 +155,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                         assignment: analysis.assignment,
                         priority: analysis.priority,
                         employeeName: analysis.employee_name || null,
+                        patientName: analysis.patient_name || null,
                         isResolved: analysis.is_resolved || false,
                         reason: analysis.reason || null,
                         status: "Waiting",
@@ -287,6 +289,7 @@ Return a JSON object with the following properties:
 6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. Valid staff members for this office are: ${validStaff}. If the employee is not one of these names, or if you only hear a name in the context of 'Is [Name] available?' or 'I'm calling for [Name]' (which is the patient), return null. Do NOT make up a name.
 7. "is_outbound": true if this is an outbound call from the office to a patient.
 8. "is_resolved": true if the caller's request was completed, false if they need a callback or follow-up.
+9. "patient_name": The first and last name of the patient (or caller). Extract this from the transcript if mentioned, otherwise return null.
 
 Transcript: "${transcript}"
 `;
@@ -320,6 +323,7 @@ Transcript: "${transcript}"
             assignment: analysis.assignment || "Front Desk Supervisor",
             reason: analysis.reason || "",
             employeeName: analysis.employee_name || null,
+            patientName: analysis.patient_name || null,
             isOutbound: analysis.is_outbound || false,
             isResolved: analysis.is_resolved || false,
             status: "Waiting",
