@@ -140,6 +140,20 @@
   --theme-900: #18181b;
 }
 
+[data-theme="high-contrast"] {
+  /* High Contrast (Black/Yellow) */
+  --theme-50: #000000;
+  --theme-100: #1a1a1a;
+  --theme-200: #333333;
+  --theme-300: #ffd700;
+  --theme-400: #ffcc00;
+  --theme-500: #ffb300;
+  --theme-600: #e6a100;
+  --theme-700: #cc8f00;
+  --theme-800: #b37d00;
+  --theme-900: #996b00;
+}
+
 @theme {
   --color-primary-50: var(--theme-50);
   --color-primary-100: var(--theme-100);
