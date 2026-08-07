@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// tally.js (Debug Script)
+// -----------------------------------------------------------------------------
+// This is a standalone Node.js script used to manually test and debug the
+// outbound call counting logic. It is not part of the active cloud functions.
+// -----------------------------------------------------------------------------
 const fs = require('fs');
 
 async function test() {

@@ -1,27 +1,38 @@
+// -----------------------------------------------------------------------------
+// Firebase Cloud Functions (Backend)
+// -----------------------------------------------------------------------------
+// This file is our server. When someone calls the office, Mango Voice sends a
+// message (a "Webhook") to this server. This code intercepts that message,
+// saves it to our database, and even uses AI to transcribe and summarize the call!
+// -----------------------------------------------------------------------------
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { Buffer } = require("buffer");
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin (Required to talk to the database securely)
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.firestore();
 
-// Standard App ID across frontend and backend
+// The specific database path we write to
 const APP_ID = "fds-operations-hub";
 
 // OPTIONAL: Paste your Google Apps Script Webhook URL here if you want Firebase to relay to Google Sheets
 const GOOGLE_SHEET_WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "";
 
 /**
- * Mango Webhook Receiver (Gen 2)
- * Handles incoming webhooks, updates Firestore, and optionally forwards to Google Sheets.
+ * ----------------------------------------------------------------------------
+ * Mango Webhook Receiver
+ * ----------------------------------------------------------------------------
+ * This function creates a public URL on the internet. Mango Voice is configured
+ * to send data to this URL every time a phone call happens.
  */
 exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, async (req, res) => {
-    // Allow GET for quick browser health-checks
+    // A quick health-check. If you visit this URL in your browser (a GET request),
+    // it will just say "Active & Online!"
     if (req.method === "GET") {
         return res.status(200).send("Mango Webhook Endpoint is Active & Online!");
     }
@@ -43,14 +54,14 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             return res.status(400).json({ ok: false, error: "Empty payload" });
         }
 
-        // Handle single object or array payloads
+        // Mango sometimes sends multiple events at once (an Array), so we loop through them.
         const events = Array.isArray(rawBody) ? rawBody : [rawBody];
         let processed = 0;
         let skipped = 0;
         const processedEvents = [];
 
         for (const event of events) {
-            // Filter out line_extension events to prevent duplicate rows in Google Sheets
+            // Only process call logs or call summaries. Skip everything else.
             if (event.type && !event.type.startsWith("call_log") && !event.type.startsWith("call_summary")) {
                 console.log(`Skipping non-call-log event type: ${event.type}`);
                 skipped++;
@@ -80,9 +91,14 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             // Truncate rawEvent to prevent unbounded document sizes (Firestore 1MB limit)
             const truncatedRawEvent = JSON.stringify(data).slice(0, 5000);
 
+            // We get the location parameter from the URL (e.g. ?location=glendale)
             const location = (req.query.location || "glendale").toLowerCase();
 
-            // 1. Write call record to Firestore (Instant Web App update)
+            // ----------------------------------------------------------------
+            // Step 1: Write Initial Record to Firestore
+            // ----------------------------------------------------------------
+            // We write the call to the database immediately so it pops up on the
+            // dashboard right away, even if the AI takes 30 seconds to transcribe it.
             const callRef = db.collection("artifacts")
                 .doc(APP_ID)
                 .collection("public")
@@ -107,10 +123,14 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                 importedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
-            // 2. Process Audio with OpenAI Whisper & GPT-4o if recording is present
-            // IMPORTANT: Awaited so Cloud Functions doesn't terminate before completion
+            // ----------------------------------------------------------------
+            // Step 2: Process Audio with AI (OpenAI)
+            // ----------------------------------------------------------------
+            // If there is an audio recording, we send it to OpenAI to transcribe
+            // it (Speech-to-Text), and then use ChatGPT to summarize it, guess
+            // the priority, and assign it to a queue.
             const duration = data.duration_seconds || data.duration || 0;
-            const skipTranscription = duration > 0 && duration < 15;
+            const skipTranscription = duration > 0 && duration < 15; // Don't transcribe super short calls (voicemails, hang-ups)
 
             if (recordingUrl && OPENAI_API_KEY && !skipTranscription) {
                 const analysis = await processAudioAndAnalyze(callId, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber, location, data.direction || 'unknown');
