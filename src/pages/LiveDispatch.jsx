@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------------
+// LiveDispatch.jsx (The Main Dashboard)
+// -----------------------------------------------------------------------------
+// This is the core page of the application. It brings together all the smaller
+// components (QueueHeader, CallCard, QuickEntryForm) and manages the logic
+// for filtering which calls should be shown on the screen.
+// -----------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import QueueHeader from '../components/QueueHeader';
@@ -7,8 +14,14 @@ import QueueSection from '../components/QueueSection';
 import OutboundLeaderboardCard from '../components/OutboundLeaderboardCard';
 
 export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, addCall, updateCall, resolveCall, deleteCall, onToast, officeLocation, setOfficeLocation }) {
+  // --------------------------------------------------------------------------
+  // UI State: Queue Filtering
+  // --------------------------------------------------------------------------
+  // Keeps track of which queue button the user clicked (e.g., 'front desk').
+  // By default, it is 'all', which means show everything.
   const [filterQueue, setFilterQueue] = useState('all');
 
+  // We take the master list of activeCalls and filter it down based on the button clicked.
   const filteredActive = filterQueue === 'all'
     ? activeCalls
     : activeCalls.filter((c) => {
@@ -16,6 +29,12 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         return assigned.includes(filterQueue);
       });
 
+  // --------------------------------------------------------------------------
+  // Outbound Call Detection Logic
+  // --------------------------------------------------------------------------
+  // This is a complex helper function. Because data comes in from different sources
+  // (like Zapier vs manual entry), we have to use several rules to figure out
+  // if a call is "Outbound" (staff calling patients) vs "Inbound" (patients calling us).
   const isCallOutbound = (c) => {
     let isOutbound = false;
 
@@ -78,10 +97,19 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
     return false;
   };
 
+  // --------------------------------------------------------------------------
+  // Split the Calls
+  // --------------------------------------------------------------------------
+  // Now that we have a filtered list of calls, we split them into Inbound and Outbound
+  // so we can render them in different sections on the screen.
   const inboundCalls = filteredActive.filter((c) => !isCallOutbound(c));
   const outboundCalls = filteredActive.filter((c) => isCallOutbound(c));
 
-  const allCalls = [...(activeCalls || []), ...(resolvedCalls || [])];
+  // --------------------------------------------------------------------------
+  // Action Handlers
+  // --------------------------------------------------------------------------
+  // These functions wrap our database functions (from useCalls.js) with "Toasts"
+  // so that when a user clicks a button, a little popup says "Success!" or "Error!"
 
   const handleUpdate = (id, updates) => {
     updateCall(id, updates)
@@ -101,9 +129,16 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
       .catch(() => onToast('Failed to delete call', 'error'));
   };
 
+  // --------------------------------------------------------------------------
+  // The User Interface (JSX)
+  // --------------------------------------------------------------------------
   return (
     <>
-      {/* Queues */}
+      {/* 
+        1. Top Visual Queue (QueueHeader)
+        This is the row of colored boxes (Front Desk, Pod 1, Pod 2, etc.) at the top.
+        When you click one, it expands into "Focus Mode".
+      */}
       <QueueHeader 
         activeCalls={inboundCalls} 
         officeLocation={officeLocation}
@@ -114,7 +149,10 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         onDelete={handleDelete}
       />
 
-      {/* Filter Bar */}
+      {/* 
+        2. Filter Bar & Location Toggle
+        This row contains the small gray filter buttons and the Glendale/Litchfield toggle.
+      */}
       <div className="flex items-center gap-3 flex-wrap justify-between">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Filter:</span>
@@ -158,17 +196,27 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         </div>
       </div>
 
-      {/* Outbound Leaderboard Card */}
+      {/* 
+        3. Outbound Leaderboard
+        This component calculates who made the most outbound calls today/week/month.
+      */}
       <OutboundLeaderboardCard calls={calls} officeLocation={officeLocation} />
 
-      {/* Quick Callback Entry */}
+      {/* 
+        4. Manual Callback Form
+        The small form where staff can manually type in a patient's name and number.
+      */}
       <QuickEntryForm
         onAddCall={addCall}
         onSuccess={(msg) => onToast(msg, 'success')}
         onError={(msg) => onToast(msg, 'error')}
       />
 
-      {/* Queues Section */}
+      {/* 
+        5. Master Call Lists (QueueSections)
+        These are the big expandable sections ("ACTIVE INBOUND", "ACTIVE OUTBOUND", "RESOLVED CALLS").
+        We hide the Active lists if the user clicked one of the focus queues at the top.
+      */}
       <div className="space-y-6">
       {/* Active Inbound & Outbound Sections - Hidden if filtering */}
       {filterQueue === 'all' && (

@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------------
+// CallCard.jsx
+// -----------------------------------------------------------------------------
+// This component represents a single "Ticket" or "Call" on the dashboard.
+// It handles displaying the call data, as well as providing the UI for editing,
+// claiming (In Progress), resolving, or deleting the call.
+// -----------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { Phone, Clock, Edit3, CheckCircle, Trash2, X, ChevronUp, AlertTriangle } from 'lucide-react';
 
@@ -29,6 +36,7 @@ const QUEUES = [
 
 const PRIORITIES = ['NORMAL', 'TODAY', 'URGENT', 'ESCALATED'];
 
+// A helper function to turn timestamps into human-readable text (e.g. "5m ago")
 function timeAgo(timestamp) {
   if (!timestamp) return '';
   const seconds = Math.floor((Date.now() - timestamp.toDate().getTime()) / 1000);
@@ -41,22 +49,37 @@ function timeAgo(timestamp) {
 }
 
 export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) {
+  // --------------------------------------------------------------------------
+  // Component State
+  // --------------------------------------------------------------------------
+  // We use local state to track if the user has clicked "Edit" or "Resolve",
+  // so we can show them the appropriate forms/confirmation menus.
   const [editing, setEditing] = useState(false);
   const [editAssign, setEditAssign] = useState(call.assignment || 'Front Desk Supervisor');
   const [editPriority, setEditPriority] = useState(call.priority || 'NORMAL');
-  const [confirming, setConfirming] = useState(null); // 'resolve' | 'delete'
+  const [confirming, setConfirming] = useState(null); // Can be 'resolve', 'delete', or null
 
+  // --------------------------------------------------------------------------
+  // Admin Check
+  // --------------------------------------------------------------------------
+  // Hardcoded admins who are allowed to see the "Delete" button.
   const isAdmin = user?.email === 'luckyj5521@gmail.com' || user?.email === 'cmarkel@gmail.com';
 
+  // Helper variables to ensure we always have something to display
+  // even if the database is missing some fields.
   const displayName = call.fromName || call.name || 'Unknown Caller';
   const displayPhone = call.fromNumber || call.phone || 'No phone provided';
   const displayPriority = call.priority || 'NORMAL';
   const displayAssignment = call.assignment || 'Unassigned';
   const displayStatus = call.status || 'Waiting';
 
+  // --------------------------------------------------------------------------
+  // Action Handlers
+  // --------------------------------------------------------------------------
   const handleSaveEdit = async () => {
+    // We call the `onUpdate` function that was passed down from LiveDispatch
     await onUpdate(call.id, { assignment: editAssign, priority: editPriority });
-    setEditing(false);
+    setEditing(false); // Close the edit form
   };
 
   const handleStatusAdvance = () => {

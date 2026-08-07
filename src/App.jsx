@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------------
+// App.jsx
+// -----------------------------------------------------------------------------
+// This is the "Root" or "Entry Point" of our React application.
+// Think of this file as the traffic cop. It decides what to show the user
+// based on whether they are logged in, and what URL they are currently on.
+// -----------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Menu, Clock } from 'lucide-react';
@@ -21,7 +28,12 @@ const PAGE_TITLES = {
   '/prescriptions': 'Prescriptions',
 };
 
-// Loading skeleton for initial auth
+// ============================================================================
+// LoadingSkeleton Component
+// ============================================================================
+// A simple, reusable loading screen shown while Firebase is checking if
+// the user is logged in. This prevents the login screen from flashing for
+// a split second if they are already authenticated.
 function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -33,20 +45,45 @@ function LoadingSkeleton() {
   );
 }
 
+// ============================================================================
+// Main App Component
+// ============================================================================
 export default function App() {
+  // 1. Authentication Hook (useAuth)
+  // This custom hook grabs the current user, handles the login/logout logic,
+  // and tells us if Firebase is still "loading" the user state.
   const { user, loading: authLoading, error: authError, setError: setAuthError, login, register, logout, resetPassword } = useAuth();
+  
+  // 2. Global State for Location
+  // We keep the "officeLocation" state here at the very top level so that 
+  // both the Sidebar and the Dashboard can share this data.
   const [officeLocation, setOfficeLocation] = useState('glendale');
+
+  // 3. Database Hook (useCalls)
+  // This hook listens to our Firestore database in real-time. It grabs the
+  // calls specific to the officeLocation we selected above.
   const { calls, activeCalls, resolvedCalls, loading: callsLoading, addCall, updateCall, resolveCall, deleteCall } = useCalls(user, officeLocation);
+  
+  // 4. UI State
+  // Controls toast notifications (popups at the bottom) and mobile menu visibility.
   const { showToast, ToastContainer } = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Gets the current URL path (e.g., '/', '/billing') so we can update the title
   const location = useLocation();
 
-  // Show loading skeleton while Firebase auth initializes
+  // --------------------------------------------------------------------------
+  // Condition 1: Firebase is still loading
+  // --------------------------------------------------------------------------
+  // We don't know if they are logged in yet, so we show the spinning wheel.
   if (authLoading) {
     return <LoadingSkeleton />;
   }
 
-  // Not authenticated — show login
+  // --------------------------------------------------------------------------
+  // Condition 2: Not Authenticated
+  // --------------------------------------------------------------------------
+  // We know who they are, and they aren't logged in. Render the LoginScreen.
   if (!user) {
     return (
       <LoginScreen
@@ -59,7 +96,11 @@ export default function App() {
     );
   }
 
-  // Authenticated — show dashboard
+  // --------------------------------------------------------------------------
+  // Condition 3: Authenticated (Dashboard View)
+  // --------------------------------------------------------------------------
+  // If the code reaches this point, `user` is not null, meaning they are logged in.
+  // We can safely render the Sidebar and the main page content.
   const pageTitle = PAGE_TITLES[location.pathname] || 'FDS Hub';
   const pageSubtitle = location.pathname === '/'
     ? 'Real-time callbacks & call dispatch tracking'
@@ -67,6 +108,11 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
+      {/* 
+        Sidebar Component 
+        We pass down the user object so it can display their name and avatar,
+        and we pass down the `logout` function so the Sign Out button works.
+      */}
       <Sidebar
         user={user}
         onLogout={logout}
@@ -110,7 +156,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Routes */}
+          {/* 
+            React Router (Routes)
+            This section acts like a TV channel changer. Depending on the URL,
+            it renders a different component. If the URL is '/' (home), it renders
+            the LiveDispatch component and passes down all the database functions.
+          */}
           <Routes>
             <Route
               path="/"

@@ -22,6 +22,8 @@ The system operates across three seamlessly integrated layers:
 
 ## Application Architecture
 
+> **📘 Deep Dive:** For a full technical breakdown and step-by-step execution flow, please read the [ARCHITECTURE.md](ARCHITECTURE.md) guide.
+
 - **Frontend:** React (Vite), Tailwind CSS, Lucide Icons. Hosted on Firebase Hosting.
 - **Backend:** Firebase Cloud Functions (Node.js).
 - **Database:** Firebase Firestore (Real-time NoSQL).
