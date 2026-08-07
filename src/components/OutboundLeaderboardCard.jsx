@@ -37,7 +37,7 @@ const getCurrentMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const ModalCallItem = ({ call }) => {
+const ModalCallItem = ({ call, allCalls = [] }) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const isOutbound = call.direction === 'outbound' || call.isOutbound;
   
@@ -49,6 +49,21 @@ const ModalCallItem = ({ call }) => {
     displayName = call.patientName || call.toName || call.fromName || 'Unknown Patient';
     if (displayName.toLowerCase().includes('family dental')) displayName = 'Unknown Patient';
     displayPhone = call.toNumber || call.fromNumber || 'No phone provided';
+
+    if (displayName === 'Unknown Patient' && displayPhone && displayPhone !== 'No phone provided') {
+      // Magic trick: Search historical inbound calls for this same phone number!
+      const historicalCall = allCalls.find(c => 
+        (c.direction === 'inbound' || (!c.direction && !c.isOutbound)) && 
+        c.fromNumber === displayPhone && 
+        c.fromName && 
+        !c.fromName.toLowerCase().includes('family dental') &&
+        !c.fromName.toLowerCase().includes('unknown') &&
+        c.fromName.trim() !== ''
+      );
+      if (historicalCall) {
+        displayName = historicalCall.fromName;
+      }
+    }
   } else {
     displayName = call.fromName || call.name || 'Unknown Caller';
     displayPhone = call.fromNumber || call.phone || 'No phone provided';
@@ -371,7 +386,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
                       return empName === selectedEmployeeForModal;
                     })
                     .map((call, idx) => (
-                      <ModalCallItem key={call.callId || call.id || idx} call={call} />
+                      <ModalCallItem key={call.callId || call.id || idx} call={call} allCalls={calls} />
                     ))}
                 </div>
               </div>
