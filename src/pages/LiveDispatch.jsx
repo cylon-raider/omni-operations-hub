@@ -207,6 +207,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         The small form where staff can manually type in a patient's name and number.
       */}
       <QuickEntryForm
+        officeLocation={officeLocation}
         onAddCall={addCall}
         onSuccess={(msg) => onToast(msg, 'success')}
         onError={(msg) => onToast(msg, 'error')}
@@ -230,6 +231,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
             onDelete={handleDelete}
             defaultExpanded={true}
             user={user}
+            officeLocation={officeLocation}
           />
 
           <QueueSection
@@ -241,6 +243,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
             onDelete={handleDelete}
             defaultExpanded={false}
             user={user}
+            officeLocation={officeLocation}
           />
         </>
       )}
@@ -255,6 +258,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
           onResolve={handleResolve}
           onDelete={handleDelete}
           user={user}
+          officeLocation={officeLocation}
         />
       </div>
 

@@ -112,6 +112,7 @@ export default function QueueHeader({ activeCalls, officeLocation, filterQueue, 
                       onUpdate={onUpdate}
                       onResolve={onResolve}
                       onDelete={onDelete}
+                      officeLocation={officeLocation}
                     />
                   ))
                 )}

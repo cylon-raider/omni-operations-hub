@@ -12,7 +12,8 @@ export default function QueueSection({
   emptyMessage = "No active calls in queue.",
   icon: Icon,
   topContent,
-  user
+  user,
+  officeLocation = 'glendale'
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -59,6 +60,7 @@ export default function QueueSection({
                 onResolve={onResolve}
                 onDelete={onDelete}
                 user={user}
+                officeLocation={officeLocation}
               />
             ))
           )}

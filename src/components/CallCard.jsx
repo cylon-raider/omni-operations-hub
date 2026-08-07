@@ -48,7 +48,7 @@ function timeAgo(timestamp) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) {
+export default function CallCard({ call, onUpdate, onResolve, onDelete, user, officeLocation = 'glendale' }) {
   // --------------------------------------------------------------------------
   // Component State
   // --------------------------------------------------------------------------
@@ -150,7 +150,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user }) 
               onChange={(e) => setEditAssign(e.target.value)}
               className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-primary-500"
             >
-              {QUEUES.map((q) => (
+              {QUEUES.filter(q => officeLocation === 'litchfield' ? !q.toLowerCase().startsWith('pod') : true).map((q) => (
                 <option key={q} value={q}>{q}</option>
               ))}
             </select>

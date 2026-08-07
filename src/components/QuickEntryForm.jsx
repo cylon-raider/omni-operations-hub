@@ -21,7 +21,7 @@ function formatPhone(value) {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-export default function QuickEntryForm({ onAddCall, onSuccess, onError }) {
+export default function QuickEntryForm({ onAddCall, onSuccess, onError, officeLocation = 'glendale' }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [assign, setAssign] = useState('Front Desk Supervisor');
@@ -92,7 +92,7 @@ export default function QuickEntryForm({ onAddCall, onSuccess, onError }) {
             onChange={(e) => setAssign(e.target.value)}
             className="w-full p-2.5 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:bg-white focus:border-primary-500 font-medium transition-colors"
           >
-            {QUEUES.map((q) => (
+            {QUEUES.filter(q => officeLocation === 'litchfield' ? !q.value.toLowerCase().startsWith('pod') : true).map((q) => (
               <option key={q.value} value={q.value}>{q.label}</option>
             ))}
           </select>
