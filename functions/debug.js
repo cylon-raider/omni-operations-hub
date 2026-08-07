@@ -39,7 +39,7 @@ exports.debugDb = onRequest({ invoker: "public" }, async (req, res) => {
               isOutbound = true;
             } else {
               const n = (c.fromName || c.name || '').toLowerCase();
-              if (n.includes('family dental') && !n.includes('provider')) {
+              if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
                 isOutbound = true;
               }
             }
@@ -110,7 +110,7 @@ exports.realTally = onRequest({ invoker: "public" }, async (req, res) => {
               isOutbound = true;
             } else {
               const n = (c.fromName || c.name || '').toLowerCase();
-              if (n.includes('family dental') && !n.includes('provider')) {
+              if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
                 isOutbound = true;
               }
             }

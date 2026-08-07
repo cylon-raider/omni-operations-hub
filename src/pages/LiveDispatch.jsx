@@ -58,7 +58,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         isOutbound = true;
       } else {
         const n = (c.fromName || c.name || '').toLowerCase();
-        if (n.includes('family dental') && !n.includes('provider')) {
+        if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
           isOutbound = true;
         }
       }

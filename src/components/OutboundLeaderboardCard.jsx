@@ -47,7 +47,7 @@ const ModalCallItem = ({ call, allCalls = [] }) => {
   if (isOutbound) {
     // For outbound calls, the clinic is making the call. The patient is the destination.
     displayName = call.patientName || call.toName || call.fromName || 'Unknown Patient';
-    if (displayName.toLowerCase().includes('family dental')) displayName = 'Unknown Patient';
+    if (displayName.toLowerCase().includes('family dental') || displayName.toLowerCase().includes('chewy dental')) displayName = 'Unknown Patient';
     displayPhone = call.toNumber || call.fromNumber || 'No phone provided';
 
     if (displayName === 'Unknown Patient' && displayPhone && displayPhone !== 'No phone provided') {
@@ -57,6 +57,7 @@ const ModalCallItem = ({ call, allCalls = [] }) => {
         c.fromNumber === displayPhone && 
         c.fromName && 
         !c.fromName.toLowerCase().includes('family dental') &&
+        !c.fromName.toLowerCase().includes('chewy dental') &&
         !c.fromName.toLowerCase().includes('unknown') &&
         c.fromName.trim() !== ''
       );
@@ -145,7 +146,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
           isOutbound = true;
         } else {
           const n = (c.fromName || c.name || '').toLowerCase();
-          if (n.includes('family dental') && !n.includes('provider')) {
+          if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
             isOutbound = true;
           }
         }
