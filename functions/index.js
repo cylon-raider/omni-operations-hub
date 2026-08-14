@@ -447,3 +447,4 @@ exports.reprocessFailed = onRequest({ invoker: "public", timeoutSeconds: 300 }, 
 
 exports.debugDb = require('./debug').debugDb;
 exports.fixCalls = require('./debug').fixCalls;
+exports.clearErrors = require('./debug').clearErrors;

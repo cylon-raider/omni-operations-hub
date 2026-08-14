@@ -174,3 +174,34 @@ exports.fixCalls = onRequest({ invoker: "public" }, async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+exports.clearErrors = onRequest({ invoker: "public" }, async (req, res) => {
+    try {
+        const callsRef = db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls");
+        const snapshot = await callsRef.where("status", "==", "Transcription Error").get();
+        console.log(`Found ${snapshot.size} calls to resolve`);
+        let count = 0;
+        let batch = db.batch();
+        for (const doc of snapshot.docs) {
+            batch.update(doc.ref, {
+                status: "Resolved",
+                isResolved: true,
+                summary: "Transcription Error - Auto-resolved"
+            });
+            count++;
+            if (count % 400 === 0) {
+                await batch.commit();
+                console.log(`Committed ${count} updates...`);
+                batch = db.batch();
+            }
+        }
+        if (count % 400 !== 0) {
+            await batch.commit();
+            console.log(`Committed final updates... total: ${count}`);
+        }
+        res.json({ success: true, clearedCount: count });
+    } catch (e) {
+        console.error("Error in clearErrors:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
