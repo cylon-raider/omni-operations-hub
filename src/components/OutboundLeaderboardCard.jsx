@@ -1,7 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Trophy, Calendar, CalendarDays, CalendarCheck2, History, X } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ErrorBoundary } from './ErrorBoundary';
 import { isCallOutbound, resolveEmployeeAlias } from '../utils/outboundCall';
+import { db, APP_ID } from '../config/firebase';
+
+const CALLS_PATH = `artifacts/${APP_ID}/public/data/calls`;
 
 const getLocalToday = () => {
   const d = new Date();
@@ -101,12 +105,41 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [selectedEmployeeForModal, setSelectedEmployeeForModal] = useState(null);
 
+  // `calls` (from useCalls.js) is bounded to the last 90 days for performance.
+  // "All Time" needs the full history, so it's fetched on demand — once,
+  // only when someone actually selects that tab — rather than kept live in
+  // memory for every user by default.
+  const [allTimeCalls, setAllTimeCalls] = useState(null);
+  const [allTimeLoading, setAllTimeLoading] = useState(false);
+
+  useEffect(() => {
+    if (timeframe !== 'all' || !officeLocation) return;
+    let cancelled = false;
+    setAllTimeLoading(true);
+    const q = query(collection(db, CALLS_PATH), where('location', '==', officeLocation));
+    getDocs(q)
+      .then((snap) => {
+        if (cancelled) return;
+        setAllTimeCalls(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      })
+      .catch((err) => console.error('Failed to fetch all-time calls:', err))
+      .finally(() => { if (!cancelled) setAllTimeLoading(false); });
+    return () => { cancelled = true; };
+  }, [timeframe, officeLocation]);
+
   // Compute filteredCalls so it can be used by both leaderboard and modal
   const filteredCalls = useMemo(() => {
     const now = new Date();
 
+    // For "All Time", use the dedicated full-history fetch above instead of
+    // the bounded live feed. Everything else uses the bounded feed, which
+    // already covers day/week/month.
+    const sourceCalls = timeframe === 'all' ? (allTimeCalls || []) : calls;
+
     // First, filter for outbound calls only (shared with LiveDispatch.jsx)
-    const outboundCalls = (calls || []).filter((c) => isCallOutbound(c, officeLocation));
+    const outboundCalls = (sourceCalls || []).filter((c) => isCallOutbound(c, officeLocation));
+
+    if (timeframe === 'all') return outboundCalls;
 
     // Then filter by timeframe
     return outboundCalls.filter((c) => {
@@ -151,7 +184,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
           return true;
       }
     });
-  }, [calls, officeLocation, timeframe, selectedDate, selectedWeek, selectedMonth]);
+  }, [calls, allTimeCalls, officeLocation, timeframe, selectedDate, selectedWeek, selectedMonth]);
 
   // Compute leaderboard from filteredCalls
   const leaderboard = useMemo(() => {
@@ -252,7 +285,11 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
 
       {/* Leaderboard Results */}
       <div className="flex flex-wrap gap-3 relative z-10">
-        {leaderboard.length === 0 ? (
+        {timeframe === 'all' && allTimeLoading && allTimeCalls === null ? (
+          <div className="w-full text-center py-6 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+            <span className="text-sm font-semibold text-gray-500">Loading all-time history…</span>
+          </div>
+        ) : leaderboard.length === 0 ? (
           <div className="w-full text-center py-6 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
             <span className="text-sm font-semibold text-gray-500">No outbound calls recorded for this timeframe.</span>
           </div>
