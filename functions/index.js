@@ -130,9 +130,10 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             // it (Speech-to-Text), and then use ChatGPT to summarize it, guess
             // the priority, and assign it to a queue.
             const duration = data.duration_seconds || data.duration || 0;
-            const skipTranscription = duration > 0 && duration < 15; // Don't transcribe super short calls (voicemails, hang-ups)
+            const skipTranscription = duration > 0 && duration < 25; // Don't transcribe super short calls (voicemails, hang-ups)
+            const isInternal = data.direction === 'internal';
 
-            if (recordingUrl && OPENAI_API_KEY && !skipTranscription) {
+            if (recordingUrl && OPENAI_API_KEY && !skipTranscription && !isInternal) {
                 const analysis = await processAudioAndAnalyze(callId, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber, location, data.direction || 'unknown');
                 if (analysis) {
                     // Attach AI analysis back to the payload
@@ -162,13 +163,17 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                         location: location
                     }, { merge: true });
                 }
-            } else if (skipTranscription) {
-                // Instantly update to Waiting with a short call summary
+            } else if (skipTranscription || isInternal) {
+                // Instantly update to Waiting with a short summary
                 const target = event.payload ? event.payload : event;
                 target.location = location;
                 
+                const summaryMsg = isInternal 
+                    ? "Internal office call. No AI transcript generated."
+                    : `Short call (${duration}s). No AI transcript generated.`;
+                
                 await callRef.set({
-                    summary: `Short call (${duration}s). No AI transcript generated.`,
+                    summary: summaryMsg,
                     status: "Waiting",
                     location: location
                 }, { merge: true });
