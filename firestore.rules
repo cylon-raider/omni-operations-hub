@@ -2,10 +2,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // User profiles — only owner can write
+    function isPayrollAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.payrollRole == "admin";
+    }
+
+    // User profiles — owner can write their own doc; payroll admins can also
+    // update other users' `payrollRole` field (promote/demote payroll access).
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
+      allow write: if request.auth.uid == userId || isPayrollAdmin();
+    }
+
+    // Payroll: staff directory, schedule, and daily collections logs.
+    // Read requires auth; writes require payroll admin.
+    // `rate` is intentionally NOT stored here — see payroll_staffRates below —
+    // so a non-admin reading the directory can never see anyone's pay rate.
+    match /payroll_staff/{staffId} {
+      allow read: if request.auth != null;
+      allow write: if isPayrollAdmin() && !('rate' in request.resource.data);
+    }
+    match /payroll_schedule/{dayId} {
+      allow read: if request.auth != null;
+      allow write: if isPayrollAdmin();
+    }
+    match /payroll_dailyLogs/{dayId} {
+      allow read: if request.auth != null;
+      allow write: if isPayrollAdmin();
+    }
+
+    // Payroll pay rates, split out of payroll_staff so they can be locked
+    // down per-person: a payroll admin can read/write any rate; a staff
+    // member can only read the single rate doc whose linked payroll_staff
+    // email matches their own login email (never anyone else's).
+    match /payroll_staffRates/{staffId} {
+      allow read: if isPayrollAdmin()
+        || (request.auth != null
+            && request.auth.token.email != null
+            && get(/databases/$(database)/documents/payroll_staff/$(staffId)).data.email is string
+            && get(/databases/$(database)/documents/payroll_staff/$(staffId)).data.email.lower() == request.auth.token.email.lower());
+      allow write: if isPayrollAdmin();
     }
 
     // Call records — require authentication, validate writes
