@@ -1,3 +1,8 @@
+// One-off admin/debug HTTP functions. Deliberately NOT `invoker: "public"` —
+// Cloud Functions v2 defaults to requiring an authenticated IAM invoker, so
+// these can only be triggered by someone with Cloud Functions Invoker
+// permission on this project (e.g. via `gcloud functions call` or an
+// identity token), never by an anonymous URL visit.
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
@@ -6,7 +11,7 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-exports.debugDb = onRequest({ invoker: "public" }, async (req, res) => {
+exports.debugDb = onRequest(async (req, res) => {
     try {
         const snapshot = await db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls")
             .orderBy("createdAt", "desc")
@@ -41,7 +46,7 @@ exports.debugDb = onRequest({ invoker: "public" }, async (req, res) => {
     }
 });
 
-exports.realTally = onRequest({ invoker: "public" }, async (req, res) => {
+exports.realTally = onRequest(async (req, res) => {
     try {
         const start = new Date("2026-08-05T00:00:00-07:00");
         const end = new Date("2026-08-06T00:00:00-07:00");
@@ -112,7 +117,7 @@ exports.realTally = onRequest({ invoker: "public" }, async (req, res) => {
     }
 });
 
-exports.fixCalls = onRequest({ invoker: "public" }, async (req, res) => {
+exports.fixCalls = onRequest(async (req, res) => {
     try {
         const callsRef = db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls");
         
@@ -139,7 +144,7 @@ exports.fixCalls = onRequest({ invoker: "public" }, async (req, res) => {
     }
 });
 
-exports.clearErrors = onRequest({ invoker: "public" }, async (req, res) => {
+exports.clearErrors = onRequest(async (req, res) => {
     try {
         const callsRef = db.collection("artifacts").doc("fds-operations-hub").collection("public").doc("data").collection("calls");
         const snapshot = await callsRef.where("status", "==", "Transcription Error").get();

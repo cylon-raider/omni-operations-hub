@@ -7,11 +7,34 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.payrollRole == "admin";
     }
 
-    // User profiles — owner can write their own doc; payroll admins can also
-    // update other users' `payrollRole` field (promote/demote payroll access).
+    // Practice owners — bootstrapped as payroll admin on first login, and
+    // exempt from call deletion restrictions. Keep in sync with OWNER_EMAILS
+    // in src/utils/payrollConstants.js.
+    function isOwnerEmail() {
+      return request.auth != null
+        && request.auth.token.email in ['luckyj5521@gmail.com', 'cmarkel@gmail.com'];
+    }
+
+    // User profiles.
+    // - A payroll admin can write anything on anyone's doc (incl. promoting/
+    //   demoting `payrollRole`).
+    // - Anyone can self-write fields OTHER than `payrollRole` (their own
+    //   profile info).
+    // - `payrollRole` can only be self-written once, to bootstrap it for the
+    //   very first time, and only to the value this rule itself computes
+    //   (admin for owner emails, viewer otherwise) — mirrors the client-side
+    //   bootstrap in usePayrollRole.js, but re-validated server-side so a
+    //   non-owner can never grant themselves admin, even on that first write.
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId || isPayrollAdmin();
+
+      allow write: if isPayrollAdmin()
+        || (request.auth.uid == userId
+            && resource != null
+            && resource.data.get('payrollRole', null) == request.resource.data.get('payrollRole', null))
+        || (request.auth.uid == userId
+            && (resource == null || !('payrollRole' in resource.data))
+            && request.resource.data.payrollRole == (isOwnerEmail() ? 'admin' : 'viewer'));
     }
 
     // Payroll: staff directory, schedule, and daily collections logs.
@@ -56,12 +79,17 @@ service cloud.firestore {
         && request.resource.data.priority is string
         && request.resource.data.status is string;
 
-      allow update: if request.auth != null;
+      // Partial (merge) updates are expected from both staff and the mango
+      // webhook function, so we don't require all fields — just type-check
+      // whichever of these fields are present, to block corrupting a record.
+      allow update: if request.auth != null
+        && (!('fromName' in request.resource.data) || request.resource.data.fromName is string)
+        && (!('fromNumber' in request.resource.data) || request.resource.data.fromNumber is string)
+        && (!('assignment' in request.resource.data) || request.resource.data.assignment is string)
+        && (!('priority' in request.resource.data) || request.resource.data.priority is string)
+        && (!('status' in request.resource.data) || request.resource.data.status is string);
 
-      allow delete: if request.auth != null && (
-        request.auth.token.email == 'luckyj5521@gmail.com' ||
-        request.auth.token.email == 'cmarkel@gmail.com'
-      );
+      allow delete: if isOwnerEmail();
     }
 
     // Deny everything else explicitly

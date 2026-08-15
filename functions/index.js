@@ -46,7 +46,10 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
         const MANGO_TOKEN = process.env.MANGO_TOKEN;
 
         const rawBody = req.body;
-        console.log("=== MANGO WEBHOOK RECEIVED ===", JSON.stringify(rawBody, null, 2));
+        // Log only non-PII metadata — rawBody contains caller names/phone
+        // numbers, which we don't want sitting in Cloud Logging in full.
+        const eventTypes = (Array.isArray(rawBody) ? rawBody : [rawBody]).map((e) => e?.type || "unknown");
+        console.log("=== MANGO WEBHOOK RECEIVED ===", { eventCount: eventTypes.length, eventTypes });
 
         // Validate payload is present
         if (!rawBody || (typeof rawBody === "object" && Object.keys(rawBody).length === 0)) {
@@ -372,7 +375,9 @@ Transcript: "${transcript}"
         });
     }
 }
-exports.migrateDb = onRequest({ invoker: "public" }, async (req, res) => {
+// Not `invoker: "public"` — one-off migration tool, only callable by
+// someone with Cloud Functions Invoker permission on this project.
+exports.migrateDb = onRequest(async (req, res) => {
     try {
         const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
         const snapshot = await callsRef.get();
@@ -402,7 +407,9 @@ exports.migrateDb = onRequest({ invoker: "public" }, async (req, res) => {
     }
 });
 
-exports.reprocessFailed = onRequest({ invoker: "public", timeoutSeconds: 300 }, async (req, res) => {
+// Not `invoker: "public"` — admin recovery tool, only callable by someone
+// with Cloud Functions Invoker permission on this project.
+exports.reprocessFailed = onRequest({ timeoutSeconds: 300 }, async (req, res) => {
     try {
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         const MANGO_TOKEN = process.env.MANGO_TOKEN;
