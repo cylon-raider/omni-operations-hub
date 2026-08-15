@@ -59,6 +59,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   const [editAssign, setEditAssign] = useState(call.assignment || 'Front Desk Supervisor');
   const [editPriority, setEditPriority] = useState(call.priority || 'NORMAL');
   const [confirming, setConfirming] = useState(null); // Can be 'resolve', 'delete', or null
+  const [showTranscript, setShowTranscript] = useState(false);
 
   // --------------------------------------------------------------------------
   // Admin Check
@@ -126,10 +127,21 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
             </p>
           )}
 
-          {call.transcript && !call.summary && (
-            <p className="text-xs text-gray-500 mt-2 bg-white p-2 rounded-lg border border-gray-200/60 line-clamp-2">
-              {call.transcript}
-            </p>
+          {call.transcript && (
+            <div className="mt-1.5">
+              <button
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="text-[10px] font-bold text-gray-500 hover:text-primary-600 uppercase tracking-wider transition-colors"
+              >
+                {showTranscript ? 'Hide Transcript' : 'See Transcript'}
+              </button>
+
+              {showTranscript && (
+                <p className="text-xs text-gray-600 mt-1.5 bg-white p-2 rounded-lg border border-gray-200/60 whitespace-pre-wrap leading-relaxed">
+                  {call.transcript}
+                </p>
+              )}
+            </div>
           )}
         </div>
 
