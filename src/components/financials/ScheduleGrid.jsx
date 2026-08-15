@@ -430,6 +430,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleDeleteShift(dayStr, key); }}
                                         className="opacity-0 group-hover/shift:opacity-100 p-0.5 hover:bg-red-700 rounded transition-opacity print:hidden"
+                                        aria-label="Delete vacant slot"
                                         title="Delete slot"
                                       >
                                         <Trash2 size={10} className="text-white" />
@@ -450,6 +451,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleDeleteShift(dayStr, key); }}
                                         className="opacity-0 group-hover/shift:opacity-100 p-0.5 text-gray-400 hover:text-red-500 rounded transition-opacity print:hidden"
+                                        aria-label={`Delete ${member.name}'s shift`}
                                         title="Delete shift"
                                       >
                                         <Trash2 size={10} />
@@ -571,6 +573,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
               </div>
               <button
                 onClick={() => { setSelectedDayForModal(null); setSelectedStaffId(''); }}
+                aria-label="Close"
                 className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-400 hover:text-gray-600"
               >
                 <X size={18} />
@@ -588,7 +591,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
                         <div key={key} className="flex justify-between items-center p-3 bg-red-50 border border-red-100 rounded-xl">
                           <span className="text-xs font-black tracking-tight text-red-600 uppercase">{val}</span>
                           {isPayrollAdmin && (
-                            <button onClick={() => handleDeleteShift(selectedDayForModal, key)} className="p-1.5 hover:bg-red-100 rounded-lg text-red-500 transition-colors">
+                            <button onClick={() => handleDeleteShift(selectedDayForModal, key)} aria-label="Delete vacant slot" className="p-1.5 hover:bg-red-100 rounded-lg text-red-500 transition-colors">
                               <Trash2 size={16} />
                             </button>
                           )}
@@ -604,7 +607,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
                             <div className="text-xs text-gray-500 font-medium">{member.role} ({val})</div>
                           </div>
                           {isPayrollAdmin && (
-                            <button onClick={() => handleDeleteShift(selectedDayForModal, key)} className="p-1.5 hover:bg-gray-200 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
+                            <button onClick={() => handleDeleteShift(selectedDayForModal, key)} aria-label={`Delete ${member.name}'s shift`} className="p-1.5 hover:bg-gray-200 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
                               <Trash2 size={16} />
                             </button>
                           )}

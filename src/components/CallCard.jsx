@@ -217,7 +217,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
 
       {/* Action Buttons - visible on hover or always on mobile */}
       {!editing && !confirming && (
-        <div className="mt-3 pt-3 border-t border-gray-200/60 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity sm:opacity-100 sm:group-hover:opacity-100">
+        <div className="mt-3 pt-3 border-t border-gray-200/60 flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity sm:opacity-100 sm:group-hover:opacity-100">
           {displayStatus === 'Waiting' && (
             <button
               onClick={handleStatusAdvance}

@@ -44,7 +44,7 @@ export default function Toast({ message, type = 'success', onClose, duration = 4
     >
       <Icon size={16} className={ICON_STYLES[type]} />
       <span className="text-sm font-semibold">{message}</span>
-      <button onClick={() => { setVisible(false); setTimeout(onClose, 300); }} className="ml-2 opacity-60 hover:opacity-100">
+      <button onClick={() => { setVisible(false); setTimeout(onClose, 300); }} aria-label="Dismiss notification" className="ml-2 opacity-60 hover:opacity-100">
         <X size={14} />
       </button>
     </div>

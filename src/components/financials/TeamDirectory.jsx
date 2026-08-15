@@ -216,7 +216,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                 </div>
                 <div className="flex gap-2 pt-2">
                   {isEditing && (
-                    <button type="button" onClick={resetForm} className="w-1/3 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center">
+                    <button type="button" onClick={resetForm} aria-label="Cancel editing" className="w-1/3 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center">
                       <X size={16} />
                     </button>
                   )}
@@ -257,8 +257,8 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                         </div>
                         {isPayrollAdmin && (
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => startEdit(member)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Pencil size={16} /></button>
-                            <button onClick={() => handleDeleteStaff(member.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                            <button onClick={() => startEdit(member)} aria-label={`Edit ${member.name}`} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Pencil size={16} /></button>
+                            <button onClick={() => handleDeleteStaff(member.id)} aria-label={`Remove ${member.name}`} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
                           </div>
                         )}
                       </div>

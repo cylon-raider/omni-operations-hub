@@ -77,6 +77,8 @@ export default function QuickEntryForm({ onAddCall, onSuccess, onError, officeLo
           </label>
           <input
             required
+            type="tel"
+            inputMode="numeric"
             value={phone}
             onChange={(e) => setPhone(formatPhone(e.target.value))}
             className="w-full p-2.5 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:bg-white focus:border-primary-500 transition-colors"

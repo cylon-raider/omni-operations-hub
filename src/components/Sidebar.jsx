@@ -54,6 +54,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close menu"
             className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
           >
             <X size={18} />
