@@ -5,7 +5,7 @@
 // Think of this file as the traffic cop. It decides what to show the user
 // based on whether they are logged in, and what URL they are currently on.
 // -----------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Menu, Clock } from 'lucide-react';
 
@@ -16,8 +16,20 @@ import { useToast } from './components/Toast';
 import LoginScreen from './components/LoginScreen';
 import Sidebar from './components/Sidebar';
 import LiveDispatch from './pages/LiveDispatch';
-import Financials from './pages/Financials';
 import PlaceholderPage from './pages/PlaceholderPage';
+
+// Live Dispatch is the default landing page nearly everyone opens; Financials
+// is a large, admin-heavy module (schedule grid, team CRUD, EBITDA calc) used
+// by a subset of staff, so it's worth keeping out of the main bundle.
+const Financials = lazy(() => import('./pages/Financials'));
+
+function FinancialsLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <div className="w-8 h-8 border-2 border-gray-200 border-t-primary-500 rounded-full animate-spin" />
+    </div>
+  );
+}
 
 // Route → Display name mapping
 const PAGE_TITLES = {
@@ -182,7 +194,14 @@ export default function App() {
                 />
               }
             />
-            <Route path="/financials" element={<Financials user={user} onToast={showToast} />} />
+            <Route
+              path="/financials"
+              element={
+                <Suspense fallback={<FinancialsLoadingFallback />}>
+                  <Financials user={user} onToast={showToast} />
+                </Suspense>
+              }
+            />
             <Route path="/billing" element={<PlaceholderPage title="Billing Center" />} />
             <Route path="/clinical" element={<PlaceholderPage title="Clinical Center" />} />
             <Route path="/hygiene" element={<PlaceholderPage title="Hygiene Center" />} />

@@ -65,9 +65,12 @@ export default function QueueHeader({ activeCalls, officeLocation, filterQueue, 
             `}
             style={!isSelected ? { pointerEvents: 'none', margin: 0, padding: 0 } : {}}
           >
-            <div 
+            <button
+              type="button"
+              aria-pressed={isOnlySelected}
+              aria-label={`${isOnlySelected ? 'Close' : 'Focus'} ${q.name} queue, ${queueCalls.length} waiting`}
               onClick={() => setFilterQueue && setFilterQueue(filterQueue === filterName ? 'all' : filterName)}
-              className={`bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col cursor-pointer transition-all duration-500 ease-out hover:shadow-md
+              className={`w-full text-left bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col cursor-pointer transition-all duration-500 ease-out hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/40
                 ${isOnlySelected ? 'shadow-2xl ring-4 ring-primary-500/20 mb-6' : 'shadow-sm hover:scale-105'}
               `}
             >
@@ -83,7 +86,7 @@ export default function QueueHeader({ activeCalls, officeLocation, filterQueue, 
                   Waiting
                 </div>
               </div>
-            </div>
+            </button>
 
             {/* Embedded Call List (Only shows when this is the uniquely selected queue) */}
             {isOnlySelected && (

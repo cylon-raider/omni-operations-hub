@@ -74,8 +74,9 @@ export default function ThemeSelector() {
                 <Palette size={18} className="text-primary-500" />
                 Select Theme
               </div>
-              <button 
+              <button
                 onClick={() => setIsOpen(false)}
+                aria-label="Close theme selector"
                 className="p-1 hover:bg-gray-200 rounded-lg text-gray-500 transition-colors"
               >
                 <X size={16} />
