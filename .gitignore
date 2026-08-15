@@ -17,6 +17,13 @@ dist-ssr
 .env.*
 .env.local
 .env.production
+# ...except the root .env: it's the ONLY source of VITE_FIREBASE_* build-time
+# config for the GitHub Actions deploy workflow (npm run build with no other
+# secrets injection) - removing it from git breaks every production build
+# silently (Vite bakes in `undefined`, no build-time error) until someone's
+# browser finally loads the broken bundle. These are Firebase's public
+# client config values, not secrets - safe to commit.
+!/.env
 
 # Editor directories and files
 .vscode/*
