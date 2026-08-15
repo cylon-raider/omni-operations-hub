@@ -8,11 +8,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
-  serverTimestamp, query, orderBy, where
+  serverTimestamp, query, where, Timestamp
 } from 'firebase/firestore';
 import { db, APP_ID } from '../config/firebase';
 
 const CALLS_PATH = `artifacts/${APP_ID}/public/data/calls`;
+
+// Live Dispatch only ever needs active calls + calls resolved today, so the
+// live listener is bounded to the last 90 days instead of holding a
+// forever-growing call history in memory. Older history is still fully
+// available on demand (see OutboundLeaderboardCard.jsx's "All Time" view,
+// which does its own one-time fetch rather than relying on this listener).
+const HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 // --------------------------------------------------------------------------
 // The Main Hook Function
@@ -36,11 +43,13 @@ export function useCalls(user, location = 'glendale') {
       return;
     }
 
-    // Step 1: Create a "Query". We ask Firebase for all calls located at the
-    // currently selected office (e.g., "glendale").
+    // Step 1: Create a "Query". We ask Firebase for calls located at the
+    // currently selected office (e.g., "glendale") from the last 90 days.
+    const cutoff = Timestamp.fromMillis(Date.now() - HISTORY_WINDOW_MS);
     const q = query(
       collection(db, CALLS_PATH),
-      where('location', '==', location)
+      where('location', '==', location),
+      where('createdAt', '>=', cutoff)
     );
 
     // Step 2: Set up the Listener (`onSnapshot`)
