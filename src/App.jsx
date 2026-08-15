@@ -16,6 +16,7 @@ import { useToast } from './components/Toast';
 import LoginScreen from './components/LoginScreen';
 import Sidebar from './components/Sidebar';
 import LiveDispatch from './pages/LiveDispatch';
+import Financials from './pages/Financials';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 // Route → Display name mapping
@@ -181,7 +182,7 @@ export default function App() {
                 />
               }
             />
-            <Route path="/financials" element={<PlaceholderPage title="Financials & Payroll" />} />
+            <Route path="/financials" element={<Financials user={user} onToast={showToast} />} />
             <Route path="/billing" element={<PlaceholderPage title="Billing Center" />} />
             <Route path="/clinical" element={<PlaceholderPage title="Clinical Center" />} />
             <Route path="/hygiene" element={<PlaceholderPage title="Hygiene Center" />} />

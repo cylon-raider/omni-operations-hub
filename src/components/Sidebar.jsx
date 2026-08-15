@@ -8,8 +8,11 @@ import ThemeSelector from './ThemeSelector';
 
 const mainLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Live Dispatch', size: 'main' },
-  { to: '/financials', icon: Receipt, label: 'Financials & Payroll', size: 'main' },
+  { to: '/financials', icon: Receipt, label: 'Financials & Payroll', size: 'main', isNew: true },
 ];
+
+// "New" badge on the Financials & Payroll link — shown for 7 days after launch, then gone.
+const NEW_BADGE_EXPIRES = new Date('2026-08-21T00:00:00');
 
 const centerLinks = [
   { to: '/billing', icon: DollarSign, label: 'Billing Center' },
@@ -21,6 +24,7 @@ const centerLinks = [
 export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
   const userInitial = user?.displayName?.[0] || user?.email?.[0]?.toUpperCase() || '?';
   const userName = user?.displayName || user?.email?.split('@')[0] || 'Staff';
+  const showNewBadge = Date.now() < NEW_BADGE_EXPIRES.getTime();
 
   return (
     <>
@@ -78,7 +82,18 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
                   }
                 >
                   <link.icon size={18} />
-                  {link.label}
+                  <span className="flex-1">{link.label}</span>
+                  {link.isNew && showNewBadge && (
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500" />
+                      </span>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded-full">
+                        New
+                      </span>
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>
