@@ -78,6 +78,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   const [dept, setDept] = useState('General');
   const [role, setRole] = useState('');
   const [rate, setRate] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleSaveStaff = async (e) => {
     e.preventDefault();
@@ -99,11 +100,10 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   };
 
   const handleDeleteStaff = async (id) => {
-    if (confirm('Remove this staff member?')) {
-      await deleteDoc(doc(db, 'payroll_staff', id));
-      await deleteDoc(doc(db, 'payroll_staffRates', id));
-      onToast?.('Staff member removed', 'success');
-    }
+    await deleteDoc(doc(db, 'payroll_staff', id));
+    await deleteDoc(doc(db, 'payroll_staffRates', id));
+    onToast?.('Staff member removed', 'success');
+    setConfirmDeleteId(null);
   };
 
   const resetForm = () => {
@@ -255,10 +255,17 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                             )}
                           </div>
                         </div>
-                        {isPayrollAdmin && (
+                        {isPayrollAdmin && confirmDeleteId === member.id && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-600">Remove?</span>
+                            <button onClick={() => handleDeleteStaff(member.id)} className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors">Confirm</button>
+                            <button onClick={() => setConfirmDeleteId(null)} className="px-2.5 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors">Cancel</button>
+                          </div>
+                        )}
+                        {isPayrollAdmin && confirmDeleteId !== member.id && (
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => startEdit(member)} aria-label={`Edit ${member.name}`} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Pencil size={16} /></button>
-                            <button onClick={() => handleDeleteStaff(member.id)} aria-label={`Remove ${member.name}`} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                            <button onClick={() => setConfirmDeleteId(member.id)} aria-label={`Remove ${member.name}`} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
                           </div>
                         )}
                       </div>

@@ -49,7 +49,7 @@ export default function Financials({ user, onToast }) {
       />
 
       {tab === 'overview' && isPayrollAdmin && <FinancialsOverview />}
-      {tab === 'schedule' && <ScheduleGrid isPayrollAdmin={isPayrollAdmin} />}
+      {tab === 'schedule' && <ScheduleGrid isPayrollAdmin={isPayrollAdmin} onToast={onToast} />}
       {tab === 'team' && <TeamDirectory user={user} isPayrollAdmin={isPayrollAdmin} onToast={onToast} />}
     </div>
   );

@@ -159,7 +159,7 @@ const ScheduleCell = ({ date, memberId, schedule, onUpdate, isPayrollAdmin }) =>
   );
 };
 
-export default function ScheduleGrid({ isPayrollAdmin }) {
+export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
   const [viewMode, setViewMode] = useState('calendar');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [calendarTab, setCalendarTab] = useState('all');
@@ -175,6 +175,8 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
   const [shiftEnd, setShiftEnd] = useState('');
   const [vacantRole, setVacantRole] = useState('RDH');
   const [vacantTime, setVacantTime] = useState('9-5');
+  // Pending destructive action awaiting inline confirmation (replaces window.confirm)
+  const [pendingConfirm, setPendingConfirm] = useState(null); // { message, onConfirm } | null
 
   useEffect(() => {
     const unsubStaff = onSnapshot(collection(db, 'payroll_staff'), (s) =>
@@ -228,7 +230,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
         setShiftStart('');
         setShiftEnd('');
       } else {
-        alert('Please enter a valid start and end time (e.g. 9a-5p).');
+        onToast?.('Please enter a valid start and end time (e.g. 9a-5p).', 'error');
       }
     } else {
       const uniqueId = `need_${Date.now()}`;
@@ -239,10 +241,7 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
     }
   };
 
-  const copyLastWeek = async () => {
-    if (!isPayrollAdmin) return;
-    if (!confirm("Copy schedule from the previous week? This will overwrite the current week's schedule.")) return;
-
+  const runCopyLastWeek = async () => {
     const currentWeekStart = new Date(weekDays[0]);
     const lastWeekStart = new Date(currentWeekStart);
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
@@ -262,13 +261,18 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
         await setDoc(doc(db, 'payroll_schedule', targetStr), { ...currentData, ...srcData }, { merge: true });
       }
     }
-    alert('Schedule copied successfully!');
+    onToast?.('Schedule copied successfully!', 'success');
   };
 
-  const copyWeekRow = async (rowDays) => {
+  const copyLastWeek = () => {
     if (!isPayrollAdmin) return;
-    if (!confirm('Copy schedule from the previous week for this week? This will overwrite existing shifts for these dates.')) return;
+    setPendingConfirm({
+      message: "Copy schedule from the previous week? This will overwrite the current week's schedule.",
+      onConfirm: runCopyLastWeek,
+    });
+  };
 
+  const runCopyWeekRow = async (rowDays) => {
     for (let i = 0; i < 6; i++) {
       const targetStr = rowDays[i];
       const targetDate = new Date(targetStr);
@@ -282,7 +286,15 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
         await setDoc(doc(db, 'payroll_schedule', targetStr), { ...currentData, ...srcData }, { merge: true });
       }
     }
-    alert('Week schedule copied successfully!');
+    onToast?.('Week schedule copied successfully!', 'success');
+  };
+
+  const copyWeekRow = (rowDays) => {
+    if (!isPayrollAdmin) return;
+    setPendingConfirm({
+      message: 'Copy schedule from the previous week for this week? This will overwrite existing shifts for these dates.',
+      onConfirm: () => runCopyWeekRow(rowDays),
+    });
   };
 
   const shiftDate = (days) => {
@@ -691,6 +703,29 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
                   </form>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM MODAL (replaces window.confirm) */}
+      {pendingConfirm && (
+        <div className="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-200 p-6 space-y-4">
+            <p className="text-sm font-semibold text-gray-700">{pendingConfirm.message}</p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setPendingConfirm(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { pendingConfirm.onConfirm(); setPendingConfirm(null); }}
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl text-xs transition-colors"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
