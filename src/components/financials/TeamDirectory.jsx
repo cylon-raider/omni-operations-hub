@@ -297,6 +297,10 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
             {appUsers.map((u) => {
               const payrollRole = u.payrollRole || 'viewer';
               const isOwner = OWNER_EMAILS.includes(u.email);
+              // Owner emails auto-bootstrap to admin the first time *they* open this
+              // page — until then they can still show as viewer, so only lock the
+              // control once they're actually admin (self is always locked).
+              const isLocked = u.uid === user?.uid || (isOwner && payrollRole === 'admin');
               return (
                 <div key={u.uid} className="p-4 flex items-center justify-between hover:bg-gray-50/60 transition-colors">
                   <div className="flex items-center gap-3">
@@ -315,7 +319,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                     <div className={`text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider ${payrollRole === 'admin' ? 'bg-primary-50 text-primary-700 border-primary-100' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                       {payrollRole}
                     </div>
-                    {u.uid !== user?.uid && !isOwner && (
+                    {!isLocked && (
                       <button
                         onClick={() => toggleAdmin(u.uid, payrollRole)}
                         className="text-xs font-bold text-gray-500 hover:text-primary-600 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors"
@@ -323,7 +327,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                         {payrollRole === 'admin' ? 'Demote to Viewer' : 'Promote to Admin'}
                       </button>
                     )}
-                    {(u.uid === user?.uid || isOwner) && (
+                    {isLocked && (
                       <div className="text-gray-300 p-2"><Lock size={16} /></div>
                     )}
                   </div>
