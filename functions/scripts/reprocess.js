@@ -1,5 +1,11 @@
 // reprocess.js
 // Run this script locally with: node reprocess.js
+//
+// NOTE: reprocessFailed is no longer invoker:"public" (see functions/index.js).
+// This plain fetch() will now get a 403. Add an Authorization header with a
+// GCP identity token before running, e.g.:
+//   gcloud auth print-identity-token
+// and pass it as `Authorization: Bearer <token>` on the fetch below.
 
 async function reprocessAll() {
     console.log("Starting batch reprocessing of failed calls...");

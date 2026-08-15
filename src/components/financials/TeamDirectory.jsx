@@ -13,6 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock } from 'lucide-react';
 import { db } from '../../config/firebase';
+import SegmentedControl from '../SegmentedControl';
 import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS } from '../../utils/payrollConstants';
 import { formatCurrency } from '../../utils/payrollCalculations';
 
@@ -141,24 +142,15 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
     <div className="space-y-6">
       {/* Sub-tab switcher */}
       {isPayrollAdmin && (
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200 w-fit">
-          <button
-            onClick={() => setActiveTab('staff')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              activeTab === 'staff' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Staff List
-          </button>
-          <button
-            onClick={() => setActiveTab('access')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              activeTab === 'access' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <Shield size={13} /> App Access
-          </button>
-        </div>
+        <SegmentedControl
+          className="w-fit"
+          options={[
+            { value: 'staff', label: 'Staff List' },
+            { value: 'access', label: 'App Access', icon: Shield },
+          ]}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
       )}
 
       {/* STAFF LIST */}

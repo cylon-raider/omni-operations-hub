@@ -1,21 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trophy, Calendar, CalendarDays, CalendarCheck2, History, X } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
-
-const NAME_ALIASES = {
-  'devon': 'DEVIN',
-  'alacia': 'ALICIA',
-  'iliana': 'EYLIANNA',
-  'aliana': 'EYLIANNA',
-  'eliana': 'EYLIANNA',
-  'alicia': 'ALESSIA',
-  'lisa': 'ALESSIA',
-  'mara': 'MARAH',
-  'mary ann': 'MARIANNE',
-  'b': 'IGNORE',
-  'bea': 'IGNORE',
-  'tim': 'IGNORE'
-};
+import { isCallOutbound, resolveEmployeeAlias } from '../utils/outboundCall';
 
 const getLocalToday = () => {
   const d = new Date();
@@ -119,58 +105,8 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
   const filteredCalls = useMemo(() => {
     const now = new Date();
 
-    // First, filter for outbound calls only
-    const outboundCalls = (calls || []).filter((c) => {
-      let isOutbound = false;
-
-      // 1. Check for explicit direction field (new backend update)
-      if (c.direction === 'outbound') {
-        isOutbound = true;
-      } else if (c.direction === 'inbound') {
-        return false;
-      }
-
-      // 2. Check rawEvent
-      if (!isOutbound && c.rawEvent && typeof c.rawEvent === 'string') {
-        const match = c.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
-        if (match && match[1]) {
-          const dir = match[1].toLowerCase();
-          if (dir === 'outbound') isOutbound = true;
-          else if (dir === 'inbound') return false;
-        }
-      }
-
-      // 3. AI flag & Ultimate fallback
-      if (!isOutbound) {
-        if (c.isOutbound === true) {
-          isOutbound = true;
-        } else {
-          const n = (c.fromName || c.name || '').toLowerCase();
-          if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
-            isOutbound = true;
-          }
-        }
-      }
-
-      if (isOutbound) {
-        const rawName = (c.employeeName || '').toLowerCase().trim();
-        let empName = rawName;
-        
-        if (NAME_ALIASES[rawName]) {
-          if (NAME_ALIASES[rawName] === 'IGNORE') return false;
-          empName = NAME_ALIASES[rawName].toLowerCase();
-        }
-
-        const glendaleStaff = ['jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 'pam', 'eylianna', 'dan'];
-        const litchfieldStaff = ['jen', 'melia', 'cynthia', 'lupita', 'rachel', 'aron'];
-        const validNames = officeLocation === 'litchfield' ? litchfieldStaff : glendaleStaff;
-
-        // Strict whitelist: Only allow calls from known valid employees
-        if (!empName || !validNames.includes(empName)) return false;
-        return true;
-      }
-      return false;
-    });
+    // First, filter for outbound calls only (shared with LiveDispatch.jsx)
+    const outboundCalls = (calls || []).filter((c) => isCallOutbound(c, officeLocation));
 
     // Then filter by timeframe
     return outboundCalls.filter((c) => {
@@ -215,7 +151,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
           return true;
       }
     });
-  }, [calls, timeframe, selectedDate, selectedWeek, selectedMonth]);
+  }, [calls, officeLocation, timeframe, selectedDate, selectedWeek, selectedMonth]);
 
   // Compute leaderboard from filteredCalls
   const leaderboard = useMemo(() => {
@@ -223,14 +159,9 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
     const tally = filteredCalls.reduce((acc, call) => {
       if (!call.employeeName || call.employeeName.toLowerCase().trim() === 'unknown') return acc;
 
-      const rawName = call.employeeName.trim();
-      let empName = rawName.toUpperCase();
-      const lowerName = rawName.toLowerCase();
-
-      if (NAME_ALIASES[lowerName]) {
-        if (NAME_ALIASES[lowerName] === 'IGNORE') return acc;
-        empName = NAME_ALIASES[lowerName];
-      }
+      const resolved = resolveEmployeeAlias(call.employeeName);
+      if (!resolved) return acc;
+      const empName = resolved.toUpperCase();
 
       acc[empName] = (acc[empName] || 0) + 1;
       return acc;
@@ -376,15 +307,9 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
                 <div className="space-y-3">
                   {filteredCalls
                     .filter(c => {
-                      const rawName = String(c.employeeName || '').trim();
-                      if (!rawName || rawName.toLowerCase() === 'unknown') return false;
-                      const lowerName = rawName.toLowerCase();
-                      let empName = rawName.toUpperCase();
-                      if (NAME_ALIASES[lowerName]) {
-                        if (NAME_ALIASES[lowerName] === 'IGNORE') return false;
-                        empName = NAME_ALIASES[lowerName];
-                      }
-                      return empName === selectedEmployeeForModal;
+                      if (!c.employeeName || c.employeeName.toLowerCase().trim() === 'unknown') return false;
+                      const resolved = resolveEmployeeAlias(c.employeeName);
+                      return resolved && resolved.toUpperCase() === selectedEmployeeForModal;
                     })
                     .map((call, idx) => (
                       <ModalCallItem key={call.callId || call.id || idx} call={call} allCalls={calls} />

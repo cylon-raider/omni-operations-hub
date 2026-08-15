@@ -6,12 +6,18 @@
 // for filtering which calls should be shown on the screen.
 // -----------------------------------------------------------------------------
 import React, { useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import { CheckCircle2, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import QueueHeader from '../components/QueueHeader';
-import CallCard from '../components/CallCard';
 import QuickEntryForm from '../components/QuickEntryForm';
 import QueueSection from '../components/QueueSection';
 import OutboundLeaderboardCard from '../components/OutboundLeaderboardCard';
+import SegmentedControl from '../components/SegmentedControl';
+import { isCallOutbound } from '../utils/outboundCall';
+
+const LOCATION_OPTIONS = [
+  { value: 'glendale', label: 'Glendale' },
+  { value: 'litchfield', label: 'Litchfield' },
+];
 
 export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, addCall, updateCall, resolveCall, deleteCall, onToast, officeLocation, setOfficeLocation }) {
   // --------------------------------------------------------------------------
@@ -30,80 +36,13 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
       });
 
   // --------------------------------------------------------------------------
-  // Outbound Call Detection Logic
-  // --------------------------------------------------------------------------
-  // This is a complex helper function. Because data comes in from different sources
-  // (like Zapier vs manual entry), we have to use several rules to figure out
-  // if a call is "Outbound" (staff calling patients) vs "Inbound" (patients calling us).
-  const isCallOutbound = (c) => {
-    let isOutbound = false;
-
-    if (c.direction === 'outbound') {
-      isOutbound = true;
-    } else if (c.direction === 'inbound') {
-      return false;
-    }
-
-    if (!isOutbound && c.rawEvent && typeof c.rawEvent === 'string') {
-      const match = c.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
-      if (match && match[1]) {
-        const dir = match[1].toLowerCase();
-        if (dir === 'outbound') isOutbound = true;
-        else if (dir === 'inbound') return false;
-      }
-    }
-
-    if (!isOutbound) {
-      if (c.isOutbound === true) {
-        isOutbound = true;
-      } else {
-        const n = (c.fromName || c.name || '').toLowerCase();
-        if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
-          isOutbound = true;
-        }
-      }
-    }
-
-    if (isOutbound) {
-      const NAME_ALIASES = {
-        'devon': 'DEVIN',
-        'alacia': 'ALICIA',
-        'iliana': 'EYLIANNA',
-        'aliana': 'EYLIANNA',
-        'eliana': 'EYLIANNA',
-        'alicia': 'ALESSIA',
-        'lisa': 'ALESSIA',
-        'mara': 'MARAH',
-        'mary ann': 'MARIANNE',
-        'b': 'IGNORE',
-        'bea': 'IGNORE',
-        'tim': 'IGNORE'
-      };
-
-      const rawName = (c.employeeName || '').toLowerCase().trim();
-      let empName = rawName;
-      
-      if (NAME_ALIASES[rawName]) {
-        if (NAME_ALIASES[rawName] === 'IGNORE') return false;
-        empName = NAME_ALIASES[rawName].toLowerCase();
-      }
-
-      const glendaleStaff = ['jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 'pam', 'eylianna', 'dan'];
-      const litchfieldStaff = ['jen', 'melia', 'cynthia', 'lupita', 'rachel', 'aron'];
-      const validNames = officeLocation === 'litchfield' ? litchfieldStaff : glendaleStaff;
-      
-      return true;
-    }
-    return false;
-  };
-
-  // --------------------------------------------------------------------------
   // Split the Calls
   // --------------------------------------------------------------------------
-  // Now that we have a filtered list of calls, we split them into Inbound and Outbound
-  // so we can render them in different sections on the screen.
-  const inboundCalls = filteredActive.filter((c) => !isCallOutbound(c));
-  const outboundCalls = filteredActive.filter((c) => isCallOutbound(c));
+  // Outbound detection is shared with OutboundLeaderboardCard.jsx
+  // (src/utils/outboundCall.js) so the two views can't disagree about what
+  // counts as a valid outbound call.
+  const inboundCalls = filteredActive.filter((c) => !isCallOutbound(c, officeLocation));
+  const outboundCalls = filteredActive.filter((c) => isCallOutbound(c, officeLocation));
 
   // --------------------------------------------------------------------------
   // Action Handlers
@@ -172,28 +111,7 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
           </button>
         ))}
         </div>
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-          <button
-            onClick={() => setOfficeLocation('glendale')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              officeLocation === 'glendale'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Glendale
-          </button>
-          <button
-            onClick={() => setOfficeLocation('litchfield')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              officeLocation === 'litchfield'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Litchfield
-          </button>
-        </div>
+        <SegmentedControl options={LOCATION_OPTIONS} value={officeLocation} onChange={setOfficeLocation} />
       </div>
 
       {/* 
