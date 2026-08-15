@@ -1,6 +1,6 @@
 const admin = require("firebase-admin");
 const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
 
 admin.initializeApp({
   projectId: "fds-operations-hub"

@@ -11,6 +11,7 @@ import { usePayrollRole } from '../hooks/usePayrollRole';
 import FinancialsOverview from '../components/financials/FinancialsOverview';
 import ScheduleGrid from '../components/financials/ScheduleGrid';
 import TeamDirectory from '../components/financials/TeamDirectory';
+import SegmentedControl from '../components/SegmentedControl';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Calculator, adminOnly: true },
@@ -40,20 +41,12 @@ export default function Financials({ user, onToast }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200 w-fit no-print">
-        {visibleTabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <t.icon size={14} />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        className="w-fit no-print"
+        options={visibleTabs.map((t) => ({ value: t.id, label: t.label, icon: t.icon }))}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === 'overview' && isPayrollAdmin && <FinancialsOverview />}
       {tab === 'schedule' && <ScheduleGrid isPayrollAdmin={isPayrollAdmin} />}

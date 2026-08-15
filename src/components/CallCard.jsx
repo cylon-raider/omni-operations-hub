@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { Phone, Clock, Edit3, CheckCircle, Trash2, X, ChevronUp, AlertTriangle } from 'lucide-react';
+import { OWNER_EMAILS } from '../utils/payrollConstants';
 
 const PRIORITY_STYLES = {
   URGENT: 'bg-red-100 text-red-700',
@@ -63,7 +64,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   // Admin Check
   // --------------------------------------------------------------------------
   // Hardcoded admins who are allowed to see the "Delete" button.
-  const isAdmin = user?.email === 'luckyj5521@gmail.com' || user?.email === 'cmarkel@gmail.com';
+  const isAdmin = OWNER_EMAILS.includes(user?.email);
 
   // Helper variables to ensure we always have something to display
   // even if the database is missing some fields.

@@ -9,6 +9,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { Calculator, Clock, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import { db } from '../../config/firebase';
+import SegmentedControl from '../SegmentedControl';
 import { getWeekDays, getMonthDays, formatWeekRange, formatDate } from '../../utils/payrollDate';
 import { calculateStaffCost, calculateProductionNeeded, formatCurrency, calculateHoursFromTimes } from '../../utils/payrollCalculations';
 import { TARGETS } from '../../utils/payrollConstants';
@@ -130,19 +131,15 @@ export default function FinancialsOverview() {
     <div className="space-y-6">
       {/* Timeframe + Date Navigator */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-          {['daily', 'weekly', 'monthly'].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTimeframe(t)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors capitalize ${
-                timeframe === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={[
+            { value: 'daily', label: 'Daily' },
+            { value: 'weekly', label: 'Weekly' },
+            { value: 'monthly', label: 'Monthly' },
+          ]}
+          value={timeframe}
+          onChange={setTimeframe}
+        />
         <div className="flex items-center gap-3">
           <button onClick={() => shiftDate(-1)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors">
             <ChevronLeft size={18} />

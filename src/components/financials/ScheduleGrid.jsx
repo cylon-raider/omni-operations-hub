@@ -9,6 +9,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, setDoc, doc, updateDoc, deleteField } from 'firebase/firestore';
 import { ChevronLeft, ChevronRight, Copy, Calendar, Trash2, Plus, X, CalendarDays, Users, Printer } from 'lucide-react';
 import { db } from '../../config/firebase';
+import SegmentedControl from '../SegmentedControl';
 import { getWeekDays, formatWeekRange } from '../../utils/payrollDate';
 import { calculateHoursFromTimes, formatSmartTime } from '../../utils/payrollCalculations';
 import { JOB_ROLES } from '../../utils/payrollConstants';
@@ -335,20 +336,16 @@ export default function ScheduleGrid({ isPayrollAdmin }) {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 no-print">
-            <button
-              onClick={() => setViewMode('calendar')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${viewMode === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              <CalendarDays size={13} /> Calendar Grid
-            </button>
-            <button
-              onClick={() => setViewMode('employee')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${viewMode === 'employee' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              <Users size={13} /> Employee View
-            </button>
-          </div>
+          <SegmentedControl
+            size="sm"
+            className="no-print"
+            options={[
+              { value: 'calendar', label: 'Calendar Grid', icon: CalendarDays },
+              { value: 'employee', label: 'Employee View', icon: Users },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
 
           <button
             onClick={() => window.print()}
