@@ -1,6 +1,6 @@
 # FDS Operations Hub
 
-FDS Operations Hub is a real-time dispatch and callback management system custom-built for Family Dental Station (FDS). It intelligently processes incoming patient calls using AI and routes them to the appropriate department queues, ensuring no patient callbacks slip through the cracks.
+FDS Operations Hub is a real-time dispatch and callback management system custom-built for Family Dental Station (FDS). It intelligently processes incoming patient calls using AI and routes them to the appropriate department queues, ensuring no patient callbacks slip through the cracks. It also includes a **Financials & Payroll** module (staff directory, weekly/monthly scheduling, EBITDA/production-cost overview) that shares the same Firebase project, Auth, and Firestore database as call dispatch — one login for both.
 
 ## How It Works
 
@@ -71,6 +71,19 @@ firebase deploy
 3. **Outbound Leaderboard:** The AI automatically extracts the names of employees making outbound calls and tallies them on a live leaderboard. Features timeframe filtering (Day, Week, Month) to easily track team callback performance and drive incentive programs.
 4. **Role-Based Access Control (RBAC):** Firebase Security Rules ensure that only authorized administrators can permanently delete historical call data, protecting the system from accidental data loss while still allowing standard staff to resolve and edit active calls.
 5. **Intelligent Routing & Prioritization Rules:** The AI backend is configured with specific routing logic to streamline workflows. For example, any mention of a "payment plan" or "financing" is automatically routed to the Treatment Coordinator, while mentions of "prescriptions" or "medications" are automatically flagged as URGENT.
+
+## Financials & Payroll Module
+
+Reachable from the "Financials & Payroll" sidebar link, this module has three internal tabs (no separate routes):
+
+1. **Overview** *(payroll admins only)* — staff/doctor labor cost vs. target overhead percentages, production needed to hit those targets, an EBITDA calculator against daily collections, and a department cost breakdown.
+2. **Schedule** — a calendar-grid and per-employee weekly view of shifts. Visible to every staff member (not just admins) so the whole team can see who's working when; editing is admin-only.
+3. **Team** — the staff directory (name/department/role/hourly rate), plus an "App Access" tab where payroll admins promote/demote other logged-in users' payroll access.
+
+**Access model:** `payrollRole` (`admin`/`viewer`) lives on the same `users/{uid}` profile doc used for call dispatch, separate from the existing job-title `role` field. The two practice owner emails (hardcoded in `firestore.rules`, matching `OWNER_EMAILS` in `src/utils/payrollConstants.js`) bootstrap to `admin` automatically the first time they open this module; anyone else defaults to `viewer` and must be promoted by an existing admin.
+
+**Pay rate protection:** rates live in a separate `payroll_staffRates` collection, not on the staff directory doc — Firestore rules only allow a payroll admin, or the one staff record whose admin-linked email matches the logged-in user, to read a given rate. A staff member's roster entry only shows *their own* rate once an admin sets their "Login Email" field in the Team tab to match their fds-hub login exactly; nothing is inferred automatically.
+
 ## Using the Dashboard
 
 1. **Filtering Queues:** Click the department buttons (e.g., Treatment, Pod 1, Clinical) at the top of the dashboard to filter the active queue to your specific responsibilities.

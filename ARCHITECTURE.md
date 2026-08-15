@@ -63,7 +63,16 @@ Let's walk through exactly what happens during a typical inbound call.
 4. Firestore pushes that update to *all* other logged-in computers instantly, preventing two people from working on the same call.
 5. Once finished, the staff member clicks "Resolve". The call moves to the "Resolved Calls" section for the remainder of the day.
 
-## 4. Understanding the Source Code
+## 4. The Financials & Payroll Module
+
+This module lives at the same `/financials` route and shares the same Firebase Auth/Firestore project as call dispatch — it does not have its own login.
+
+1. **`src/pages/Financials.jsx`** is the entry point mounted at `/financials`. It doesn't have its own routes for Overview/Schedule/Team — those are just internal tab state, rendered via `src/components/financials/{FinancialsOverview,ScheduleGrid,TeamDirectory}.jsx`.
+2. **`src/hooks/usePayrollRole.js`** reads (and bootstraps, on first visit) a `payrollRole` field on the same `users/{uid}` doc call-dispatch already uses. It's a separate field from that doc's job-title `role` field.
+3. **Pay rates are deliberately split out** of the staff directory (`payroll_staff`) into a separate `payroll_staffRates` collection, so `firestore.rules` can restrict reads per-person (a payroll admin can read every rate; a staff member can only read the one rate doc linked, via an admin-set email, to their own login) instead of only hiding it in the UI.
+4. **`functions/scripts/`** holds one-off Node scripts (data migration, diagnostics) used to move real data over from a previously separate `fds-payroll` Firebase project — not deployed as Cloud Functions, run locally with `node functions/scripts/<name>.js`.
+
+## 5. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 
@@ -72,3 +81,4 @@ If you want to read the code, here is the best order to look at the files:
 3.  **`src/components/CallCard.jsx`**: The visual design of a single call ticket.
 4.  **`src/hooks/useCalls.js`**: The magic connection to the real-time database.
 5.  **`functions/index.js`**: The backend server that talks to Mango Voice and OpenAI.
+6.  **`src/pages/Financials.jsx`**: The Financials & Payroll module (see Section 4 above).
