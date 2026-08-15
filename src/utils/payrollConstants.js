@@ -1,6 +1,6 @@
 // Payroll domain constants: departments, job roles, and overhead targets.
 
-export const DEPARTMENTS = ['General', 'Oral Surgery', 'Ortho', 'Front Desk', 'Dr'];
+export const DEPARTMENTS = ['General', 'Oral Surgery', 'Ortho', 'Front Desk', 'Dr', 'Pod 1', 'Pod 2', 'Pod 3'];
 
 export const JOB_ROLES = {
   'Front Desk': ['Concierge', 'Receptionist', 'Scheduler', 'Supervisor', 'General', 'Treatment Coordinator'],
