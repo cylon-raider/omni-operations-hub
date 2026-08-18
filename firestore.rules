@@ -28,12 +28,18 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
 
+      // Note: request.resource is null on delete, so every clause below that
+      // reads request.resource.data is guarded with request.resource != null
+      // first — omitting that guard makes the rule error (and therefore deny)
+      // on delete, which is exactly the bug that broke payroll_staff deletes.
       allow write: if isPayrollAdmin()
         || (request.auth.uid == userId
             && resource != null
+            && request.resource != null
             && resource.data.get('payrollRole', null) == request.resource.data.get('payrollRole', null))
         || (request.auth.uid == userId
             && (resource == null || !('payrollRole' in resource.data))
+            && request.resource != null
             && request.resource.data.payrollRole == (isOwnerEmail() ? 'admin' : 'viewer'));
     }
 
@@ -43,7 +49,10 @@ service cloud.firestore {
     // so a non-admin reading the directory can never see anyone's pay rate.
     match /payroll_staff/{staffId} {
       allow read: if request.auth != null;
-      allow write: if isPayrollAdmin() && !('rate' in request.resource.data);
+      // request.resource is null on delete — guard before reading .data, or
+      // this rule errors (and therefore denies) every delete.
+      allow write: if isPayrollAdmin()
+        && (request.resource == null || !('rate' in request.resource.data));
     }
     match /payroll_schedule/{dayId} {
       allow read: if request.auth != null;
