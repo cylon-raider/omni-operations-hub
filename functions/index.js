@@ -12,13 +12,44 @@ const fetch = require("node-fetch");
 const { Buffer } = require("buffer");
 
 // Initialize Firebase Admin (Required to talk to the database securely)
+// storageBucket is explicit rather than relying on auto-detection - see the
+// call-recording cache below, which needs it.
 if (!admin.apps.length) {
-    admin.initializeApp();
+    admin.initializeApp({ storageBucket: "fds-operations-hub.firebasestorage.app" });
 }
 const db = admin.firestore();
 
 // The specific database path we write to
 const APP_ID = "fds-operations-hub";
+
+// Call recordings are cached here on first fetch so a later retry (e.g.
+// after an OpenAI outage/billing lapse) doesn't depend on Mango's recording
+// URL still being valid - it's a short-lived (~15min) presigned S3 link.
+// Storage lifecycle rule auto-deletes these after 7 days.
+const RECORDINGS_PREFIX = "call-recordings";
+
+async function getCachedRecording(callId) {
+    try {
+        const file = admin.storage().bucket().file(`${RECORDINGS_PREFIX}/${callId}.mp3`);
+        const [exists] = await file.exists();
+        if (!exists) return null;
+        const [buffer] = await file.download();
+        console.log(`[Call ${callId}] Using cached recording from Storage.`);
+        return buffer;
+    } catch (err) {
+        console.warn(`[Call ${callId}] Could not read cached recording:`, err.message);
+        return null;
+    }
+}
+
+async function cacheRecording(callId, buffer) {
+    try {
+        const file = admin.storage().bucket().file(`${RECORDINGS_PREFIX}/${callId}.mp3`);
+        await file.save(buffer, { contentType: "audio/mpeg" });
+    } catch (err) {
+        console.warn(`[Call ${callId}] Could not cache recording:`, err.message);
+    }
+}
 
 // OPTIONAL: Paste your Google Apps Script Webhook URL here if you want Firebase to relay to Google Sheets
 const GOOGLE_SHEET_WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "";
@@ -227,28 +258,39 @@ async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToke
         .doc(callId);
 
     try {
-        // Fetch the audio file from Mango. If it's an S3 presigned URL, AWS will return 400 if we add an Authorization header.
-        const fetchOptions = {};
-        if (mangoToken && !recordingUrl.includes("amazonaws.com")) {
-            fetchOptions.headers = { "Authorization": `Bearer ${mangoToken}` };
-        }
+        // Prefer a cached copy from a previous attempt over re-fetching from
+        // Mango - its recording URLs are short-lived presigned links, so a
+        // retry (e.g. after an OpenAI outage) needs the cache once that
+        // window has passed.
+        let audioBuffer = await getCachedRecording(callId);
 
-        let audioRes;
-        for (let attempt = 1; attempt <= 12; attempt++) {
-            audioRes = await fetch(recordingUrl, fetchOptions);
-            if (audioRes.ok) break;
-            if (audioRes.status !== 404 && audioRes.status !== 403) break;
-            console.log(`[Call ${callId}] Attempt ${attempt}: Recording not ready (${audioRes.status}), waiting 10s...`);
-            await new Promise(r => setTimeout(r, 10000));
-        }
+        if (!audioBuffer) {
+            // Fetch the audio file from Mango. If it's an S3 presigned URL, AWS will return 400 if we add an Authorization header.
+            const fetchOptions = {};
+            if (mangoToken && !recordingUrl.includes("amazonaws.com")) {
+                fetchOptions.headers = { "Authorization": `Bearer ${mangoToken}` };
+            }
 
-        if (!audioRes || !audioRes.ok) {
-            throw new Error(`Failed to fetch recording: ${audioRes ? audioRes.status : 'Unknown'} ${audioRes ? audioRes.statusText : ''}`);
-        }
+            let audioRes;
+            for (let attempt = 1; attempt <= 12; attempt++) {
+                audioRes = await fetch(recordingUrl, fetchOptions);
+                if (audioRes.ok) break;
+                if (audioRes.status !== 404 && audioRes.status !== 403) break;
+                console.log(`[Call ${callId}] Attempt ${attempt}: Recording not ready (${audioRes.status}), waiting 10s...`);
+                await new Promise(r => setTimeout(r, 10000));
+            }
 
-        // Convert to Buffer (Node.js-compatible, not browser Blob)
-        const arrayBuffer = await audioRes.arrayBuffer();
-        const audioBuffer = Buffer.from(arrayBuffer);
+            if (!audioRes || !audioRes.ok) {
+                throw new Error(`Failed to fetch recording: ${audioRes ? audioRes.status : 'Unknown'} ${audioRes ? audioRes.statusText : ''}`);
+            }
+
+            // Convert to Buffer (Node.js-compatible, not browser Blob)
+            const arrayBuffer = await audioRes.arrayBuffer();
+            audioBuffer = Buffer.from(arrayBuffer);
+
+            // Cache it so a retry doesn't depend on this same short-lived URL.
+            await cacheRecording(callId, audioBuffer);
+        }
 
         // Build multipart form using the form-data package (not browser FormData)
         const form = new FormData();
