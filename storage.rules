@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Call recording cache is written/read only by the Cloud Function (Admin
+    // SDK, bypasses these rules entirely). No client (browser) access to any
+    // path in this bucket.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
