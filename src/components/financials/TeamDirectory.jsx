@@ -100,10 +100,16 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   };
 
   const handleDeleteStaff = async (id) => {
-    await deleteDoc(doc(db, 'payroll_staff', id));
-    await deleteDoc(doc(db, 'payroll_staffRates', id));
-    onToast?.('Staff member removed', 'success');
-    setConfirmDeleteId(null);
+    try {
+      await deleteDoc(doc(db, 'payroll_staff', id));
+      await deleteDoc(doc(db, 'payroll_staffRates', id));
+      onToast?.('Staff member removed', 'success');
+    } catch (err) {
+      console.error('Error deleting staff:', err);
+      onToast?.('Failed to remove staff member', 'error');
+    } finally {
+      setConfirmDeleteId(null);
+    }
   };
 
   const resetForm = () => {
