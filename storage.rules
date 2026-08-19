@@ -1,11 +1,21 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Call recording cache is written/read only by the Cloud Function (Admin
-    // SDK, bypasses these rules entirely). No client (browser) access to any
-    // path in this bucket.
+    // Practice owners — keep in sync with OWNER_EMAILS in
+    // src/utils/payrollConstants.js and isOwnerEmail() in firestore.rules.
+    function isOwnerEmail() {
+      return request.auth != null
+        && request.auth.token.email in ['luckyj5521@gmail.com', 'cmarkel@gmail.com'];
+    }
+
+    // Call recording cache is written only by the Cloud Function (Admin SDK,
+    // bypasses these rules entirely) — no client ever writes here. Reads are
+    // limited to the two practice owners, so recordings can be reviewed
+    // (e.g. via the Firebase Console) without opening browser access to
+    // everyone.
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read: if isOwnerEmail();
+      allow write: if false;
     }
   }
 }
