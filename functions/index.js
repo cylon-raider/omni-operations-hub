@@ -10,6 +10,7 @@ const admin = require("firebase-admin");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { Buffer } = require("buffer");
+const { randomUUID } = require("crypto");
 
 // Initialize Firebase Admin (Required to talk to the database securely)
 // storageBucket is explicit rather than relying on auto-detection - see the
@@ -45,7 +46,14 @@ async function getCachedRecording(callId) {
 async function cacheRecording(callId, buffer) {
     try {
         const file = admin.storage().bucket().file(`${RECORDINGS_PREFIX}/${callId}.mp3`);
-        await file.save(buffer, { contentType: "audio/mpeg" });
+        // Set a firebaseStorageDownloadTokens value so the Firebase Console's
+        // file browser (and getDownloadURL()) can open/play this file
+        // directly - the Admin SDK doesn't set one automatically the way an
+        // upload through the Console or client SDK would.
+        await file.save(buffer, {
+            contentType: "audio/mpeg",
+            metadata: { metadata: { firebaseStorageDownloadTokens: randomUUID() } },
+        });
     } catch (err) {
         console.warn(`[Call ${callId}] Could not cache recording:`, err.message);
     }
