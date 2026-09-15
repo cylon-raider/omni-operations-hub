@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Gauge, Calendar, CalendarDays, CalendarCheck2, History, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Gauge, Calendar, CalendarDays, CalendarCheck2, History, TrendingUp, TrendingDown, Minus, ListFilter } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, APP_ID } from '../config/firebase';
 import { getSentimentScore, getSentimentLabel, getSentimentBucket } from '../utils/sentiment';
 import SentimentGauge from './SentimentGauge';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const CALLS_PATH = `artifacts/${APP_ID}/public/data/calls`;
 
@@ -70,11 +71,62 @@ const BUCKET_STYLES = {
   positive: { color: 'bg-green-500', label: 'Positive' },
 };
 
+function SentimentModalCallItem({ call, expandAll }) {
+  const [showTranscript, setShowTranscript] = useState(false);
+  const isTranscriptVisible = expandAll || showTranscript;
+  const score = getSentimentScore(call);
+  const displayName = call.fromName || call.name || call.patientName || 'Unknown Caller';
+  const displayPhone = call.fromNumber || call.phone || call.toNumber || 'No phone provided';
+  const timeStr = typeof call.createdAt?.toDate === 'function'
+    ? call.createdAt.toDate().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  return (
+    <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium flex flex-col gap-2">
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-black text-gray-800 uppercase tracking-wide">{displayName}</span>
+          <span className="text-xs font-bold text-primary-600 bg-primary-100 px-2 py-0.5 rounded-md w-fit">
+            {displayPhone}
+          </span>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <SentimentGauge score={score} />
+          <span className="text-xs text-gray-400 font-medium whitespace-nowrap">{timeStr}</span>
+        </div>
+      </div>
+
+      {call.transcript && (
+        <div className="mt-1 border-t border-gray-100 pt-2">
+          {!expandAll && (
+            <button
+              onClick={() => setShowTranscript((v) => !v)}
+              className="text-[10px] font-bold text-gray-500 hover:text-primary-600 uppercase tracking-wider transition-colors"
+            >
+              {isTranscriptVisible ? 'HIDE TRANSCRIPT' : 'SEE TRANSCRIPT'}
+            </button>
+          )}
+
+          {isTranscriptVisible && (
+            <div className="mt-2 text-xs text-gray-600 font-medium bg-white p-3 rounded-lg border border-gray-200/60 whitespace-pre-wrap leading-relaxed">
+              {call.transcript}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SentimentTrendsCard({ calls = [], officeLocation }) {
   const [timeframe, setTimeframe] = useState('day');
   const [selectedDate, setSelectedDate] = useState(getLocalToday());
   const [selectedWeek, setSelectedWeek] = useState(getCurrentWeek());
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
+
+  // Bucket the "view transcripts" dropdown is filtered to ('' = closed).
+  const [selectedBucket, setSelectedBucket] = useState('');
+  const [expandAllTranscripts, setExpandAllTranscripts] = useState(false);
 
   // `calls` (from useCalls.js) is bounded to the last 90 days for
   // performance — "All Time" needs the full history, fetched on demand only
@@ -137,6 +189,23 @@ export default function SentimentTrendsCard({ calls = [], officeLocation }) {
     scores.forEach((s) => { buckets[getSentimentBucket(s)]++; });
     return buckets;
   }, [scores]);
+
+  // Calls matching the dropdown's selected bucket, for the transcript modal
+  // below — scoped to whatever timeframe is currently selected, most
+  // recent first.
+  const bucketCalls = useMemo(() => {
+    if (!selectedBucket) return [];
+    return timeframeCalls
+      .map((c) => ({ call: c, score: getSentimentScore(c) }))
+      .filter((x) => x.score !== null && getSentimentBucket(x.score) === selectedBucket)
+      .sort((a, b) => (b.call.createdAt?.toMillis?.() || 0) - (a.call.createdAt?.toMillis?.() || 0))
+      .map((x) => x.call);
+  }, [timeframeCalls, selectedBucket]);
+
+  const closeModal = () => {
+    setSelectedBucket('');
+    setExpandAllTranscripts(false);
+  };
 
   // Week-over-week comparison — only meaningful while looking at a specific
   // week, so it's hidden on the other tabs. Uses the bounded `calls` list
@@ -282,10 +351,70 @@ export default function SentimentTrendsCard({ calls = [], officeLocation }) {
                   {weekOverWeek.delta >= 0 ? '+' : ''}{weekOverWeek.delta.toFixed(2)} vs last week ({weekOverWeek.prevAvg.toFixed(2)})
                 </div>
               )}
+
+              {/* Filter by sentiment + view transcripts */}
+              <div className="flex items-center gap-2 pt-1">
+                <ListFilter size={14} className="text-gray-400 shrink-0" />
+                <select
+                  value={selectedBucket}
+                  onChange={(e) => setSelectedBucket(e.target.value)}
+                  className="text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:border-primary-500"
+                >
+                  <option value="">View transcripts by sentiment…</option>
+                  <option value="negative">Negative ({distribution.negative})</option>
+                  <option value="neutral">Neutral ({distribution.neutral})</option>
+                  <option value="positive">Positive ({distribution.positive})</option>
+                </select>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Transcript Modal */}
+      {selectedBucket && (
+        <ErrorBoundary>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4" onClick={closeModal}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${BUCKET_STYLES[selectedBucket].color}`} />
+                  <h3 className="font-bold text-gray-800 uppercase tracking-wide">
+                    {BUCKET_STYLES[selectedBucket].label} Calls ({bucketCalls.length})
+                  </h3>
+                </div>
+                <button
+                  onClick={closeModal}
+                  className="text-xs font-bold text-gray-500 hover:text-gray-800 transition-colors"
+                >
+                  CLOSE
+                </button>
+              </div>
+
+              {bucketCalls.some((c) => c.transcript) && (
+                <div className="px-4 pt-3 flex justify-end">
+                  <button
+                    onClick={() => setExpandAllTranscripts((v) => !v)}
+                    className="text-[10px] font-bold text-primary-600 hover:text-primary-700 uppercase tracking-wider transition-colors"
+                  >
+                    {expandAllTranscripts ? 'Hide All Transcripts' : 'Show All Transcripts'}
+                  </button>
+                </div>
+              )}
+
+              <div className="p-4 overflow-y-auto flex-1">
+                <div className="space-y-3">
+                  {bucketCalls.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-6">No calls in this bucket for the selected timeframe.</p>
+                  ) : bucketCalls.map((call, idx) => (
+                    <SentimentModalCallItem key={call.id || idx} call={call} expandAll={expandAllTranscripts} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
