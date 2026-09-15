@@ -1,6 +1,6 @@
 # FDS Operations Hub
 
-FDS Operations Hub is a real-time dispatch and callback management system custom-built for Family Dental Station (FDS). It intelligently processes incoming patient calls using AI and routes them to the appropriate department queues, ensuring no patient callbacks slip through the cracks. It also includes a **Financials & Payroll** module (staff directory, weekly/monthly scheduling, EBITDA/production-cost overview) that shares the same Firebase project, Auth, and Firestore database as call dispatch — one login for both.
+FDS Operations Hub is a real-time dispatch and callback management system custom-built for Family Dental Station (FDS). It intelligently processes incoming patient calls using AI — transcribing, summarizing, prioritizing, and scoring caller sentiment — and routes them to the appropriate department queues, ensuring no patient callbacks slip through the cracks. It also includes a **Financials & Payroll** module (staff directory, weekly/monthly scheduling, EBITDA/production-cost overview) that shares the same Firebase project, Auth, and Firestore database as call dispatch — one login for both. Both modules support Family Dental Station's two physical offices (Glendale and Litchfield) via a shared location toggle.
 
 ## How It Works
 
@@ -9,7 +9,7 @@ The system operates across three seamlessly integrated layers:
 1. **Mango Voice & Firebase Backend:**
    - When a call finishes, Mango Voice sends a webhook containing call metadata and the call recording URL to a **Firebase Cloud Function**.
    - The Cloud Function instantly creates a "Processing" record in Firestore, which immediately appears on the Web App dashboard.
-   - It then downloads the audio and uses **OpenAI Whisper** to transcribe the call, followed by **OpenAI GPT-4o** to generate a concise summary, determine caller sentiment, assign a priority level (e.g., URGENT, TODAY, NORMAL), and route the call to a specific department (e.g., Treatment Coordinator, Pod 1, Billing).
+   - It then downloads the audio and uses **OpenAI Whisper** to transcribe the call, followed by **OpenAI GPT-4o-mini** to generate a concise summary, score caller sentiment on a continuous -1.0 (very negative) to +1.0 (very positive) scale, assign a priority level (e.g., URGENT, TODAY, NORMAL), and route the call to a specific department (e.g., Treatment Coordinator, Pod 1, Billing).
 
 2. **Real-time React Dashboard:**
    - The React-based Web App listens to Firestore and updates instantly when the AI finishes processing. 
@@ -27,7 +27,7 @@ The system operates across three seamlessly integrated layers:
 - **Frontend:** React (Vite), Tailwind CSS, Lucide Icons. Hosted on Firebase Hosting.
 - **Backend:** Firebase Cloud Functions (Node.js).
 - **Database:** Firebase Firestore (Real-time NoSQL).
-- **AI Integrations:** OpenAI API (Whisper & GPT-4o).
+- **AI Integrations:** OpenAI API (Whisper & GPT-4o-mini).
 - **External Integrations:** Mango Voice (VoIP Webhooks), Google Workspace (Apps Script).
 
 ## Installation & Local Development
@@ -69,16 +69,19 @@ firebase deploy
 1. **Distinct Routing Queues:** The dashboard automatically separates calls into three main queues: **Active Inbound** (patient callbacks), **Active Outbound** (staff callbacks), and **Resolved Today** (completed tasks), keeping the workflow organized.
 2. **AI-Automated Resolution:** The backend AI analyzes outbound calls made by staff. If it detects a staff member successfully resolved a patient's issue, it automatically finds the corresponding inbound callback request in the queue and marks it as resolved, requiring zero manual clicks!
 3. **Outbound Leaderboard:** The AI automatically extracts the names of employees making outbound calls and tallies them on a live leaderboard. Features timeframe filtering (Day, Week, Month) to easily track team callback performance and drive incentive programs.
-4. **Role-Based Access Control (RBAC):** Firebase Security Rules ensure that only authorized administrators can permanently delete historical call data, protecting the system from accidental data loss while still allowing standard staff to resolve and edit active calls.
-5. **Intelligent Routing & Prioritization Rules:** The AI backend is configured with specific routing logic to streamline workflows. For example, any mention of a "payment plan" or "financing" is automatically routed to the Treatment Coordinator, while mentions of "prescriptions" or "medications" are automatically flagged as URGENT.
+4. **Caller Sentiment Gauge:** Every call with a transcript gets a small sentiment gauge (a continuous needle position, not just three fixed buckets) right on its card. A "Caller Sentiment" card tallies the same score across Day/Week/Month/All-Time, shows a negative/neutral/positive distribution, a week-over-week trend, and a dropdown to pull up every transcript in a given bucket.
+5. **Role-Based Access Control (RBAC):** Firebase Security Rules ensure that only authorized administrators can permanently delete historical call data, protecting the system from accidental data loss while still allowing standard staff to resolve and edit active calls.
+6. **Intelligent Routing & Prioritization Rules:** The AI backend is configured with specific routing logic to streamline workflows. For example, any mention of a "payment plan" or "financing" is automatically routed to the Treatment Coordinator, while mentions of "prescriptions" or "medications" are automatically flagged as URGENT.
 
 ## Financials & Payroll Module
 
-Reachable from the "Financials & Payroll" sidebar link, this module has three internal tabs (no separate routes):
+Reachable from the "Financials & Payroll" sidebar link, this module has three internal tabs (no separate routes), plus the same Glendale/Litchfield location toggle Live Dispatch uses:
 
-1. **Overview** *(payroll admins only)* — staff/doctor labor cost vs. target overhead percentages, production needed to hit those targets, an EBITDA calculator against daily collections, and a department cost breakdown.
+1. **Overview** *(payroll admins only)* — staff/doctor labor cost vs. target overhead percentages, production needed to hit those targets, an EBITDA calculator against daily collections, and a department cost breakdown. Collections and EBITDA are tracked per office, not combined.
 2. **Schedule** — a calendar-grid and per-employee weekly view of shifts. Visible to every staff member (not just admins) so the whole team can see who's working when; editing is admin-only.
-3. **Team** — the staff directory (name/department/role/hourly rate), plus an "App Access" tab where payroll admins promote/demote other logged-in users' payroll access.
+3. **Team** — the staff directory (name/office/department/role/hourly rate), plus an "App Access" tab where payroll admins promote/demote other logged-in users' payroll access.
+
+**Location model:** every staff member belongs to one office (`glendale` or `litchfield`, set from the same field on their directory entry); switching the toggle filters the staff directory, the schedule grid, and the Overview tab's cost calculations down to that office's people. A staff record with no office set defaults to Glendale.
 
 **Access model:** `payrollRole` (`admin`/`viewer`) lives on the same `users/{uid}` profile doc used for call dispatch, separate from the existing job-title `role` field. The two practice owner emails (hardcoded in `firestore.rules`, matching `OWNER_EMAILS` in `src/utils/payrollConstants.js`) bootstrap to `admin` automatically the first time they open this module; anyone else defaults to `viewer` and must be promoted by an existing admin.
 
@@ -90,3 +93,4 @@ Reachable from the "Financials & Payroll" sidebar link, this module has three in
 2. **Reviewing Calls:** Each call card displays the patient's name, phone number, wait time, priority, and the AI-generated summary of what happened during the call.
 3. **Resolving Calls:** After returning a patient's call, click the green **Complete** button. The call will be removed from the Active Queue and sent to the collapsible "Resolved Today" section at the bottom of the page.
 4. **Manual Entry:** Use the Quick Callback Entry form docked below the filters to manually add tasks to the board.
+5. **What's New:** The sparkle button at the bottom of the sidebar opens a running changelog of recent app updates (`src/utils/changelog.js`) — it pulses until you've opened it since the latest entry.

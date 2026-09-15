@@ -17,7 +17,7 @@ This application is built using a modern, serverless "JAMstack" architecture. Th
     *   **Firebase Cloud Functions (Node.js):** Serverless backend code that runs only when triggered. This is our "Webhook Receiver."
 *   **AI Integration:**
     *   **OpenAI (Whisper):** Converts raw audio recordings of phone calls into text (Speech-to-Text).
-    *   **OpenAI (GPT-4o):** Analyzes the text transcript to generate a summary, guess the priority, and assign the call to a specific department queue.
+    *   **OpenAI (GPT-4o-mini):** Analyzes the text transcript to generate a summary, guess the priority, assign the call to a specific department queue, and score caller sentiment from -1.0 to +1.0.
 
 ## 2. High-Level Architecture
 
@@ -41,11 +41,12 @@ Let's walk through exactly what happens during a typical inbound call.
 1. **Immediate Write:** The Cloud Function instantly writes a "stub" record to Firestore. This makes the call show up on the frontend immediately with a status of "Processing", so staff know a call just ended.
 2. **Audio Download:** The function securely downloads the MP3/WAV file from the Mango `audio_url`.
 3. **Transcription:** The audio file is sent to the OpenAI Whisper API. Whisper returns a raw text transcript of the conversation.
-4. **Analysis:** The raw transcript is sent to GPT-4o with a specific prompt. The AI is asked to:
+4. **Analysis:** The raw transcript is sent to GPT-4o-mini with a specific prompt. The AI is asked to:
     * Write a 2-sentence summary.
     * Determine the priority (NORMAL, TODAY, URGENT, ESCALATED).
     * Assign it to a specific queue (e.g., Billing, Hygiene).
     * Identify the staff member on the phone.
+    * Score caller sentiment as a number from -1.0 (very negative) to +1.0 (very positive), alongside a short text label (e.g. "Frustrated", "Happy").
 5. **Final Database Update:** The Cloud Function updates the Firestore document with the AI's analysis.
 
 ### Phase 3: The Frontend React App (`src/App.jsx` & `src/hooks/useCalls.js`)
@@ -63,16 +64,24 @@ Let's walk through exactly what happens during a typical inbound call.
 4. Firestore pushes that update to *all* other logged-in computers instantly, preventing two people from working on the same call.
 5. Once finished, the staff member clicks "Resolve". The call moves to the "Resolved Calls" section for the remainder of the day.
 
-## 4. The Financials & Payroll Module
+## 4. Caller Sentiment Scoring
+
+1. **`functions/index.js`** asks GPT-4o-mini for a `sentiment_score` (-1.0 to +1.0) on every transcribed call, stored as `sentimentScore` alongside the short text `sentiment` label it already produced. This is one extra field on the same existing analysis request, not a separate API call.
+2. **`src/utils/sentiment.js`** is the single source of truth for turning a call into a score, used by both the per-call gauge and the aggregated trends card so they can't disagree. It prefers `sentimentScore` when present; for calls processed before that field existed, it falls back to mapping the older `sentiment` text label (a small, fixed set of values GPT has always produced — "Frustrated", "Neutral", "Happy", etc.) to an equivalent score, so every historical call still gets a gauge with no backfill or re-processing needed.
+3. **`src/components/SentimentGauge.jsx`** renders the score as a semicircle gauge with the needle positioned continuously along the arc (not snapped to fixed negative/neutral/positive slots), used both small (on `CallCard.jsx`) and large (on the trends card).
+4. **`src/components/SentimentTrendsCard.jsx`** aggregates scores across Day/Week/Month/All-Time (mirroring `OutboundLeaderboardCard.jsx`'s own timeframe pattern), and includes a negative/neutral/positive filter dropdown that opens a modal listing every matching transcript for the selected timeframe.
+
+## 5. The Financials & Payroll Module
 
 This module lives at the same `/financials` route and shares the same Firebase Auth/Firestore project as call dispatch — it does not have its own login.
 
 1. **`src/pages/Financials.jsx`** is the entry point mounted at `/financials`. It doesn't have its own routes for Overview/Schedule/Team — those are just internal tab state, rendered via `src/components/financials/{FinancialsOverview,ScheduleGrid,TeamDirectory}.jsx`.
 2. **`src/hooks/usePayrollRole.js`** reads (and bootstraps, on first visit) a `payrollRole` field on the same `users/{uid}` doc call-dispatch already uses. It's a separate field from that doc's job-title `role` field.
 3. **Pay rates are deliberately split out** of the staff directory (`payroll_staff`) into a separate `payroll_staffRates` collection, so `firestore.rules` can restrict reads per-person (a payroll admin can read every rate; a staff member can only read the one rate doc linked, via an admin-set email, to their own login) instead of only hiding it in the UI.
-4. **`functions/scripts/`** holds one-off Node scripts (data migration, diagnostics) used to move real data over from a previously separate `fds-payroll` Firebase project — not deployed as Cloud Functions, run locally with `node functions/scripts/<name>.js`.
+4. **Office location** is shared with call dispatch: `Financials.jsx` receives the same `officeLocation`/`setOfficeLocation` state `App.jsx` already holds for `LiveDispatch.jsx`, rather than keeping its own copy. Each `payroll_staff` doc carries a `location` field (`glendale`/`litchfield`, defaulting to `glendale` if absent) that `TeamDirectory.jsx`, `ScheduleGrid.jsx`, and `FinancialsOverview.jsx` all filter by. `payroll_dailyLogs/{date}.collections` is a map keyed by office (`{ glendale: n, litchfield: n }`, not a single practice-wide number), so each office's EBITDA is computed against its own collections.
+5. **`functions/scripts/`** holds one-off Node scripts (data migration, diagnostics) used to move real data over from a previously separate `fds-payroll` Firebase project — not deployed as Cloud Functions, run locally with `node functions/scripts/<name>.js`.
 
-## 5. Understanding the Source Code
+## 6. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 
@@ -81,4 +90,5 @@ If you want to read the code, here is the best order to look at the files:
 3.  **`src/components/CallCard.jsx`**: The visual design of a single call ticket.
 4.  **`src/hooks/useCalls.js`**: The magic connection to the real-time database.
 5.  **`functions/index.js`**: The backend server that talks to Mango Voice and OpenAI.
-6.  **`src/pages/Financials.jsx`**: The Financials & Payroll module (see Section 4 above).
+6.  **`src/utils/sentiment.js`**: Turns a call into a sentiment score (see Section 4 above).
+7.  **`src/pages/Financials.jsx`**: The Financials & Payroll module (see Section 5 above).
