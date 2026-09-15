@@ -71,7 +71,11 @@ export default function FinancialsOverview({ officeLocation }) {
   const handleCollectionsChange = async (val) => {
     if (timeframe !== 'daily') return;
     const num = parseFloat(val);
-    await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: isNaN(num) ? 0 : num }, { merge: true });
+    // `collections` is a map keyed by office ({ glendale: n, litchfield: n }),
+    // not a single practice-wide number — setDoc's merge:true deep-merges
+    // nested map fields, so this only touches this office's key and leaves
+    // the other office's value (and the doc's other fields) untouched.
+    await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: { [officeLocation]: isNaN(num) ? 0 : num } }, { merge: true });
   };
 
   const parseHours = (val) => {
@@ -126,7 +130,7 @@ export default function FinancialsOverview({ officeLocation }) {
     return { staffCost, drCost, staffProdNeeded, drProdNeeded, deptCosts, staffHours };
   }, [locationStaff, ratesById, schedule, selectedDate, timeframe]);
 
-  const collectionsVal = timeframe === 'daily' ? parseFloat(dailyLogs[selectedDate]?.collections) || 0 : 0;
+  const collectionsVal = timeframe === 'daily' ? parseFloat(dailyLogs[selectedDate]?.collections?.[officeLocation]) || 0 : 0;
   const ebitda = collectionsVal - (financials.staffCost + financials.drCost);
   const ebitdaPercent = collectionsVal > 0 ? (ebitda / collectionsVal) * 100 : 0;
 
@@ -218,8 +222,8 @@ export default function FinancialsOverview({ officeLocation }) {
               <div className="relative w-40">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
                 <CollectionsInput
-                  key={`${timeframe}-${selectedDate}`}
-                  initialValue={timeframe === 'daily' ? (dailyLogs[selectedDate]?.collections || '').toString() : ''}
+                  key={`${timeframe}-${selectedDate}-${officeLocation}`}
+                  initialValue={timeframe === 'daily' ? (dailyLogs[selectedDate]?.collections?.[officeLocation] || '').toString() : ''}
                   disabled={timeframe !== 'daily'}
                   onChange={handleCollectionsChange}
                 />
