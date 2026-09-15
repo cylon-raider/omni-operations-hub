@@ -9,6 +9,7 @@ export const CHANGELOG = [
       'Fixed a bug where some outbound calls were being misfiled as inbound on the Live Dispatch board.',
       'Added an AI sentiment gauge to each call with a transcript, plus a Caller Sentiment card (Day/Week/Month/All-Time) with negative/neutral/positive filtering and transcript viewing.',
       'Added a Glendale/Litchfield toggle to Financials & Payroll, matching Live Dispatch.',
+      'Made the "What\'s New" pulsing indicator (this one) actually visible — it was too subtle to notice at first.',
     ],
   },
 ];
