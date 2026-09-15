@@ -14,6 +14,27 @@ import { getWeekDays, getMonthDays, formatWeekRange, formatDate } from '../../ut
 import { calculateStaffCost, calculateProductionNeeded, formatCurrency, calculateHoursFromTimes } from '../../utils/payrollCalculations';
 import { TARGETS } from '../../utils/payrollConstants';
 
+// Local-only display state for the collections input, so typing feels
+// instant. Keyed by date+timeframe in the parent so it remounts (and
+// re-reads initialValue) instead of needing an effect to resync when the
+// selected day changes.
+function CollectionsInput({ initialValue, disabled, onChange }) {
+  const [value, setValue] = useState(initialValue);
+  return (
+    <input
+      type="number"
+      disabled={disabled}
+      placeholder="0.00"
+      value={value}
+      onChange={(e) => {
+        setValue(e.target.value);
+        onChange(e.target.value);
+      }}
+      className="w-full p-2.5 pl-6 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:bg-white focus:border-primary-500 transition-colors text-right font-bold disabled:opacity-50"
+    />
+  );
+}
+
 export default function FinancialsOverview() {
   const [timeframe, setTimeframe] = useState('daily');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -22,7 +43,6 @@ export default function FinancialsOverview() {
   const [ratesById, setRatesById] = useState({});
   const [schedule, setSchedule] = useState({});
   const [dailyLogs, setDailyLogs] = useState({});
-  const [localCollections, setLocalCollections] = useState('');
 
   useEffect(() => {
     const unsubStaff = onSnapshot(collection(db, 'payroll_staff'), (s) =>
@@ -48,20 +68,10 @@ export default function FinancialsOverview() {
     return () => { unsubStaff(); unsubRates(); unsubSched(); unsubLogs(); };
   }, []);
 
-  useEffect(() => {
-    if (timeframe === 'daily') {
-      setLocalCollections((dailyLogs[selectedDate]?.collections || '').toString());
-    } else {
-      setLocalCollections('');
-    }
-  }, [selectedDate, dailyLogs, timeframe]);
-
   const handleCollectionsChange = async (val) => {
-    setLocalCollections(val);
-    if (timeframe === 'daily') {
-      const num = parseFloat(val);
-      await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: isNaN(num) ? 0 : num }, { merge: true });
-    }
+    if (timeframe !== 'daily') return;
+    const num = parseFloat(val);
+    await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: isNaN(num) ? 0 : num }, { merge: true });
   };
 
   const parseHours = (val) => {
@@ -108,7 +118,7 @@ export default function FinancialsOverview() {
     return { staffCost, drCost, staffProdNeeded, drProdNeeded, deptCosts, staffHours };
   }, [staff, ratesById, schedule, selectedDate, timeframe]);
 
-  const collectionsVal = parseFloat(localCollections) || 0;
+  const collectionsVal = timeframe === 'daily' ? parseFloat(dailyLogs[selectedDate]?.collections) || 0 : 0;
   const ebitda = collectionsVal - (financials.staffCost + financials.drCost);
   const ebitdaPercent = collectionsVal > 0 ? (ebitda / collectionsVal) * 100 : 0;
 
@@ -199,13 +209,11 @@ export default function FinancialsOverview() {
               <span className="text-xs font-semibold text-gray-500">Collections</span>
               <div className="relative w-40">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
-                <input
-                  type="number"
+                <CollectionsInput
+                  key={`${timeframe}-${selectedDate}`}
+                  initialValue={timeframe === 'daily' ? (dailyLogs[selectedDate]?.collections || '').toString() : ''}
                   disabled={timeframe !== 'daily'}
-                  placeholder="0.00"
-                  value={localCollections}
-                  onChange={(e) => handleCollectionsChange(e.target.value)}
-                  className="w-full p-2.5 pl-6 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:bg-white focus:border-primary-500 transition-colors text-right font-bold disabled:opacity-50"
+                  onChange={handleCollectionsChange}
                 />
               </div>
             </div>

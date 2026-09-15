@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, X, AlertTriangle, Info } from 'lucide-react';
 
 const ICONS = {
@@ -49,23 +49,4 @@ export default function Toast({ message, type = 'success', onClose, duration = 4
       </button>
     </div>
   );
-}
-
-export function useToast() {
-  const [toast, setToast] = useState(null);
-
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type, key: Date.now() });
-  }, []);
-
-  const ToastContainer = toast ? (
-    <Toast
-      key={toast.key}
-      message={toast.message}
-      type={toast.type}
-      onClose={() => setToast(null)}
-    />
-  ) : null;
-
-  return { showToast, ToastContainer };
 }

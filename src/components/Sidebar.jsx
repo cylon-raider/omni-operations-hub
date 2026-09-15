@@ -12,7 +12,9 @@ const mainLinks = [
 ];
 
 // "New" badge on the Financials & Payroll link — shown for 7 days after launch, then gone.
+// Computed once at module load (not per-render) to keep the component pure.
 const NEW_BADGE_EXPIRES = new Date('2026-08-21T00:00:00');
+const SHOW_NEW_BADGE = Date.now() < NEW_BADGE_EXPIRES.getTime();
 
 const centerLinks = [
   { to: '/billing', icon: DollarSign, label: 'Billing Center' },
@@ -24,7 +26,6 @@ const centerLinks = [
 export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
   const userInitial = user?.displayName?.[0] || user?.email?.[0]?.toUpperCase() || '?';
   const userName = user?.displayName || user?.email?.split('@')[0] || 'Staff';
-  const showNewBadge = Date.now() < NEW_BADGE_EXPIRES.getTime();
 
   return (
     <>
@@ -84,7 +85,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
                 >
                   <link.icon size={18} />
                   <span className="flex-1">{link.label}</span>
-                  {link.isNew && showNewBadge && (
+                  {link.isNew && SHOW_NEW_BADGE && (
                     <span className="flex items-center gap-1 shrink-0">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />

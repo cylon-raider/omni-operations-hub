@@ -6,7 +6,7 @@
 // claiming (In Progress), resolving, or deleting the call.
 // -----------------------------------------------------------------------------
 import React, { useState } from 'react';
-import { Phone, Clock, Edit3, CheckCircle, Trash2, X, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle } from 'lucide-react';
 import { OWNER_EMAILS } from '../utils/payrollConstants';
 
 const PRIORITY_STYLES = {

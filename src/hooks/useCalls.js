@@ -36,12 +36,10 @@ export function useCalls(user, location = 'glendale') {
   // The useEffect hook runs automatically when the component loads, or whenever
   // the `user` or `location` variables change.
   useEffect(() => {
-    // If the user isn't logged in, don't try to fetch data.
-    if (!user) {
-      setCalls([]);
-      setLoading(false);
-      return;
-    }
+    // If the user isn't logged in, don't try to fetch data. The returned
+    // values below already fall back to empty/not-loading when there's no
+    // user, so there's nothing to reset here.
+    if (!user) return;
 
     // Step 1: Create a "Query". We ask Firebase for calls located at the
     // currently selected office (e.g., "glendale") from the last 90 days.
@@ -148,9 +146,12 @@ export function useCalls(user, location = 'glendale') {
   // Data Filtering
   // --------------------------------------------------------------------------
   // We split the master list of calls into two lists for the UI: active and resolved.
-  const activeCalls = calls.filter((c) => c.status !== 'Resolved');
-  
-  const resolvedCalls = calls.filter((c) => {
+  // Everything below falls back to empty/not-loading when logged out, since
+  // the effect above skips subscribing (and therefore never clears out
+  // whatever `calls` was left holding from a previous session) in that case.
+  const activeCalls = !user ? [] : calls.filter((c) => c.status !== 'Resolved');
+
+  const resolvedCalls = !user ? [] : calls.filter((c) => {
     if (c.status !== 'Resolved') return false;
     
     const now = new Date();
@@ -167,10 +168,10 @@ export function useCalls(user, location = 'glendale') {
   });
 
   return {
-    calls,
+    calls: !user ? [] : calls,
     activeCalls,
     resolvedCalls,
-    loading,
+    loading: !user ? false : loading,
     addCall,
     updateCall,
     resolveCall,
