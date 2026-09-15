@@ -331,7 +331,9 @@ async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToke
             throw new Error("Whisper returned empty transcript");
         }
 
-        const glendaleStaff = "Jen, Lisa, Jamie, Addison, Mariana, Brandy, Devin, Liz, Alessia, Marianne, Aubrey, Marah, Pam, Eylianna, Dan";
+        // Devin no longer works here — removed so she can't still be
+        // recognized as a valid employee_name match on new calls.
+        const glendaleStaff = "Jen, Lisa, Jamie, Addison, Mariana, Brandy, Liz, Alessia, Marianne, Aubrey, Marah, Pam, Eylianna, Dan";
         const litchfieldStaff = "Jen, Melia, Cynthia, Lupita, Rachel, Aron";
         const validStaff = location === 'litchfield' ? litchfieldStaff : glendaleStaff;
 
@@ -344,7 +346,7 @@ Return a JSON object with the following properties:
 3. "priority": "NORMAL", "TODAY", "URGENT", or "ESCALATED". (CRITICAL: If the transcript mentions "prescription" or "prescriptions", priority MUST be "URGENT")
 4. "assignment": Route to one of ["Front Desk Supervisor", "Clinical / Labs", "Treatment Coordinator", "Billing", "Hygiene", "Pod 1", "Pod 2", "Pod 3"]. (CRITICAL: If the transcript mentions "payment plan", assignment MUST be "Treatment Coordinator")
 5. "reason": A short 3-4 word reason for the call.
-6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call. It MUST be the employee, NOT the patient. Valid staff members for this office are: ${validStaff}. If the employee is not one of these names, or if you only hear a name in the context of 'Is [Name] available?' or 'I'm calling for [Name]' (which is the patient), return null. Do NOT make up a name.
+6. "employee_name": The first name of the STAFF MEMBER / EMPLOYEE making the call, ONLY if they explicitly say their own name somewhere in the transcript (e.g. "Hi, this is Devin calling from Family Dental Station..."). Most calls — especially short appointment-confirmation voicemails — do NOT include this. If no staff member states their own name anywhere in the transcript, you MUST return null; do not guess, and do not infer a name just because it fits the situation. Valid staff members for this office are: ${validStaff} — this list exists ONLY to confirm a name you already heard self-identified is a real employee and not a mishearing, it is NOT a menu to pick from when no name was said. It MUST be the employee, NOT the patient — if a name is only mentioned in the context of "Is [Name] available?" or "I'm calling for [Name]" (which is the patient), that is NOT the employee; return null.
 7. "is_outbound": true if this is an outbound call from the office to a patient.
 8. "is_resolved": true if the caller's request was completed, false if they need a callback or follow-up.
 9. "patient_name": The first and last name of the patient (or caller). Extract this from the transcript if mentioned, otherwise return null.
@@ -373,6 +375,18 @@ Transcript: "${transcript}"
 
         const gptData = await gptRes.json();
         const analysis = JSON.parse(gptData.choices[0].message.content);
+
+        // Deterministic backstop against the AI naming an employee who was
+        // never actually mentioned: the prompt above discourages this, but
+        // GPT-4o-mini would still occasionally pick a name from the
+        // valid-staff list on transcripts where nobody self-identified
+        // (mostly short appointment-confirmation voicemails). Whatever the
+        // model returns, don't trust it unless the name literally appears
+        // in the transcript text.
+        if (analysis.employee_name && !transcript.toLowerCase().includes(analysis.employee_name.toLowerCase())) {
+            console.warn(`Discarding unsupported employee_name "${analysis.employee_name}" for ${callId} — not found in transcript text`);
+            analysis.employee_name = null;
+        }
 
         await callRef.update({
             transcript,
