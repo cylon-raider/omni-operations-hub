@@ -38,37 +38,49 @@ export function resolveEmployeeAlias(rawName) {
 }
 
 /**
- * Determines whether a call record should be treated as outbound (staff
- * calling a patient) vs inbound. Also enforces a per-location employee
- * whitelist: an outbound-looking call from an unrecognized/blank employee
- * name is NOT counted, since we can't attribute it to a real staff member.
+ * Reads Mango's own direction signal for a call — the ground-truth
+ * telephony metadata, either the parsed `direction` field or (as a
+ * fallback, if that field is missing) the same value embedded in the raw
+ * webhook JSON. Returns 'outbound' | 'inbound' | null.
  */
-export function isCallOutbound(call, officeLocation = 'glendale') {
-  let outbound = false;
-
-  if (call.direction === 'outbound') {
-    outbound = true;
-  } else if (call.direction === 'inbound') {
-    return false;
-  }
-
-  if (!outbound && call.rawEvent && typeof call.rawEvent === 'string') {
+function getMangoDirection(call) {
+  if (call.direction === 'outbound' || call.direction === 'inbound') return call.direction;
+  if (call.rawEvent && typeof call.rawEvent === 'string') {
     const match = call.rawEvent.match(/"direction"\s*:\s*"([^"]+)"/i);
     if (match && match[1]) {
       const dir = match[1].toLowerCase();
-      if (dir === 'outbound') outbound = true;
-      else if (dir === 'inbound') return false;
+      if (dir === 'outbound' || dir === 'inbound') return dir;
     }
   }
+  return null;
+}
 
-  if (!outbound) {
-    if (call.isOutbound === true) {
+/**
+ * Determines whether a call record should be treated as outbound (staff
+ * calling a patient) vs inbound.
+ *
+ * When Mango itself reports a direction, that's trusted unconditionally —
+ * it's ground truth, independent of whether we can also identify which
+ * employee handled the call. Short outbound calls that skip AI analysis
+ * (see mangoWebhook's skipTranscription) never get an employeeName, but
+ * they're still definitely outbound.
+ *
+ * Only the weaker fallback signals (GPT's own `isOutbound` guess, or a
+ * name-based heuristic), used when Mango gives no direction at all, need
+ * employee-whitelist corroboration to avoid false positives.
+ */
+export function isCallOutbound(call, officeLocation = 'glendale') {
+  const mangoDirection = getMangoDirection(call);
+  if (mangoDirection === 'outbound') return true;
+  if (mangoDirection === 'inbound') return false;
+
+  let outbound = false;
+  if (call.isOutbound === true) {
+    outbound = true;
+  } else {
+    const n = (call.fromName || call.name || '').toLowerCase();
+    if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
       outbound = true;
-    } else {
-      const n = (call.fromName || call.name || '').toLowerCase();
-      if ((n.includes('family dental') || n.includes('chewy dental')) && !n.includes('provider')) {
-        outbound = true;
-      }
     }
   }
 
