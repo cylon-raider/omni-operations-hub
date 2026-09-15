@@ -19,6 +19,7 @@ export const NAME_ALIASES = {
   'mara': 'MARAH',
   'mary ann': 'MARIANNE',
   'malia': 'MELIA',
+  'kiana': 'KEANNA',
   'brandi': 'BRANDY',
   'uncle': 'ANKUR',
   'amkur': 'ANKUR',
