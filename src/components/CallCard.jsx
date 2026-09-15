@@ -8,6 +8,8 @@
 import React, { useState } from 'react';
 import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle } from 'lucide-react';
 import { OWNER_EMAILS } from '../utils/payrollConstants';
+import { getSentimentScore } from '../utils/sentiment';
+import SentimentGauge from './SentimentGauge';
 
 const PRIORITY_STYLES = {
   URGENT: 'bg-red-100 text-red-700',
@@ -74,6 +76,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   const displayPriority = call.priority || 'NORMAL';
   const displayAssignment = call.assignment || 'Unassigned';
   const displayStatus = call.status || 'Waiting';
+  const sentimentScore = getSentimentScore(call);
 
   // --------------------------------------------------------------------------
   // Action Handlers
@@ -145,8 +148,9 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
           )}
         </div>
 
-        {/* Priority Badge + Actions */}
+        {/* Sentiment Gauge + Priority Badge + Actions */}
         <div className="flex items-center gap-2 self-end sm:self-start shrink-0">
+          <SentimentGauge score={sentimentScore} />
           <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider ${PRIORITY_STYLES[displayPriority] || PRIORITY_STYLES.NORMAL}`}>
             {displayPriority}
           </span>
