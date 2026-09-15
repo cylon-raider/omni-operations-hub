@@ -198,7 +198,12 @@ export default function App() {
               path="/financials"
               element={
                 <Suspense fallback={<FinancialsLoadingFallback />}>
-                  <Financials user={user} onToast={showToast} />
+                  <Financials
+                    user={user}
+                    onToast={showToast}
+                    officeLocation={officeLocation}
+                    setOfficeLocation={setOfficeLocation}
+                  />
                 </Suspense>
               }
             />

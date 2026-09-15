@@ -5,6 +5,7 @@ import {
   FileText, Activity, LogOut, X,
 } from 'lucide-react';
 import ThemeSelector from './ThemeSelector';
+import WhatsNewPanel from './WhatsNewPanel';
 
 const mainLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Live Dispatch', size: 'main' },
@@ -138,6 +139,7 @@ export default function Sidebar({ user, onLogout, mobileOpen, onClose }) {
               <div className="text-[10px] text-primary-600 font-bold uppercase">Staff</div>
             </div>
           </div>
+          <WhatsNewPanel />
           <ThemeSelector />
           <button
             onClick={onLogout}

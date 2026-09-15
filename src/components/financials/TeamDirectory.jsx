@@ -11,10 +11,10 @@
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock, MapPin } from 'lucide-react';
 import { db } from '../../config/firebase';
 import SegmentedControl from '../SegmentedControl';
-import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS } from '../../utils/payrollConstants';
+import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS, LOCATIONS } from '../../utils/payrollConstants';
 import { formatCurrency } from '../../utils/payrollCalculations';
 
 // New staff docs just need a unique id; Firestore's own auto-id would also
@@ -23,7 +23,7 @@ function generateStaffId() {
   return Date.now().toString();
 }
 
-export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
+export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLocation }) {
   const [activeTab, setActiveTab] = useState('staff');
 
   const [staff, setStaff] = useState([]);
@@ -85,11 +85,17 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   const [dept, setDept] = useState('General');
   const [role, setRole] = useState('');
   const [rate, setRate] = useState('');
+  const [location, setLocation] = useState(officeLocation);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Staff docs created before this feature shipped have no `location` field
+  // at all — they default to Glendale (the office the app originally only
+  // tracked) rather than disappearing from both views.
+  const locationStaff = staff.filter((s) => (s.location || 'glendale') === officeLocation);
 
   const handleSaveStaff = async (e) => {
     e.preventDefault();
-    const memberData = { name, department: dept, role, email: email.trim() };
+    const memberData = { name, department: dept, role, email: email.trim(), location };
     const staffId = isEditing ? isEditing.id : generateStaffId();
     try {
       if (isEditing) {
@@ -126,6 +132,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
     setDept('General');
     setRole('');
     setRate('');
+    setLocation(officeLocation);
   };
 
   const startEdit = (member) => {
@@ -135,6 +142,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
     setDept(member.department);
     setRole(member.role);
     setRate((ratesById[member.id] ?? '').toString());
+    setLocation(member.location || 'glendale');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -144,7 +152,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
     await updateDoc(doc(db, 'users', targetUid), { payrollRole: newRole });
   };
 
-  const groupedStaff = staff.reduce((acc, member) => {
+  const groupedStaff = locationStaff.reduce((acc, member) => {
     const d = member.department || 'Other';
     acc[d] = acc[d] || [];
     acc[d].push(member);
@@ -193,6 +201,17 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                       placeholder="matches their fds-hub login" />
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">Must exactly match this person's fds-hub login email so they can see their own rate/schedule here.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Office</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-3 text-gray-400" size={16} />
+                    <select value={location} onChange={(e) => setLocation(e.target.value)}
+                      className="w-full p-2.5 pl-9 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:bg-white focus:border-primary-500 appearance-none transition-colors font-medium cursor-pointer">
+                      {LOCATIONS.map((loc) => <option key={loc.value} value={loc.value}>{loc.label}</option>)}
+                    </select>
+                    <ChevronRight className="absolute right-3 top-3 text-gray-400 rotate-90 pointer-events-none" size={14} />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Department</label>
@@ -287,7 +306,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
                 </div>
               </div>
             ))}
-            {staff.length === 0 && (
+            {locationStaff.length === 0 && (
               <div className="text-center text-gray-400 py-8 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
                 <p className="text-xs font-semibold">No staff members yet.</p>
               </div>
