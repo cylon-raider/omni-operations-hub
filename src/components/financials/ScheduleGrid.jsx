@@ -156,7 +156,7 @@ const ScheduleCell = ({ date, memberId, schedule, onUpdate, isPayrollAdmin }) =>
   );
 };
 
-export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
+export default function ScheduleGrid({ isPayrollAdmin, onToast, officeLocation }) {
   const [viewMode, setViewMode] = useState('calendar');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [calendarTab, setCalendarTab] = useState('all');
@@ -306,7 +306,15 @@ export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
     setCurrentMonthDate(d);
   };
 
-  const groupedStaff = staff.reduce((acc, member) => {
+  // Staff docs created before this feature shipped have no `location` field
+  // at all — they default to Glendale (the office the app originally only
+  // tracked) rather than disappearing from both views.
+  const locationStaff = useMemo(
+    () => staff.filter((s) => (s.location || 'glendale') === officeLocation),
+    [staff, officeLocation]
+  );
+
+  const groupedStaff = locationStaff.reduce((acc, member) => {
     const d = member.department || 'Other';
     acc[d] = acc[d] || [];
     acc[d].push(member);
@@ -411,7 +419,7 @@ export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
                       const isCurrMonth = d.getMonth() === calendarMonth;
                       const isToday = dayStr === new Date().toISOString().split('T')[0];
                       const dayData = schedule[dayStr] || {};
-                      const dayShifts = Object.entries(dayData).filter(([k, v]) => v && isShiftInTab(k, v, calendarTab, staff));
+                      const dayShifts = Object.entries(dayData).filter(([k, v]) => v && isShiftInTab(k, v, calendarTab, locationStaff));
 
                       return (
                         <div
@@ -448,7 +456,7 @@ export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
                                   </div>
                                 );
                               } else {
-                                const member = staff.find((s) => s.id === key);
+                                const member = locationStaff.find((s) => s.id === key);
                                 if (!member) return null;
                                 return (
                                   <div key={key} className="relative group/shift flex items-center justify-between text-[10px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg py-1 px-2 hover:border-primary-200">
@@ -607,7 +615,7 @@ export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
                         </div>
                       );
                     } else {
-                      const member = staff.find((s) => s.id === key);
+                      const member = locationStaff.find((s) => s.id === key);
                       if (!member) return null;
                       return (
                         <div key={key} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-xl">
@@ -657,7 +665,7 @@ export default function ScheduleGrid({ isPayrollAdmin, onToast }) {
                             className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-medium outline-none focus:border-primary-500 cursor-pointer text-xs"
                           >
                             <option value="" disabled>Choose Employee</option>
-                            {staff.filter((s) => !(schedule[selectedDayForModal] || {})[s.id]).map((s) => (
+                            {locationStaff.filter((s) => !(schedule[selectedDayForModal] || {})[s.id]).map((s) => (
                               <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
                             ))}
                           </select>

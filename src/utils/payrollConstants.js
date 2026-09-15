@@ -11,6 +11,15 @@ export const JOB_ROLES = {
 
 export const ALL_ROLES = Object.values(JOB_ROLES).flat();
 
+// Office locations for the Financials & Payroll toggle — kept in sync with
+// LiveDispatch.jsx's own LOCATION_OPTIONS so both toggles look and behave
+// the same way. A payroll_staff doc with no `location` field (every one
+// created before this existed) defaults to 'glendale' wherever it's read.
+export const LOCATIONS = [
+  { value: 'glendale', label: 'Glendale' },
+  { value: 'litchfield', label: 'Litchfield' },
+];
+
 export const TARGETS = {
   STAFF_OVERHEAD: 0.25,  // Staff costs target limit (25%)
   DOCTOR_OVERHEAD: 0.28, // Doctor costs target limit (28%)

@@ -35,7 +35,7 @@ function CollectionsInput({ initialValue, disabled, onChange }) {
   );
 }
 
-export default function FinancialsOverview() {
+export default function FinancialsOverview({ officeLocation }) {
   const [timeframe, setTimeframe] = useState('daily');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -71,7 +71,11 @@ export default function FinancialsOverview() {
   const handleCollectionsChange = async (val) => {
     if (timeframe !== 'daily') return;
     const num = parseFloat(val);
-    await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: isNaN(num) ? 0 : num }, { merge: true });
+    // `collections` is a map keyed by office ({ glendale: n, litchfield: n }),
+    // not a single practice-wide number — setDoc's merge:true deep-merges
+    // nested map fields, so this only touches this office's key and leaves
+    // the other office's value (and the doc's other fields) untouched.
+    await setDoc(doc(db, 'payroll_dailyLogs', selectedDate), { collections: { [officeLocation]: isNaN(num) ? 0 : num } }, { merge: true });
   };
 
   const parseHours = (val) => {
@@ -82,6 +86,14 @@ export default function FinancialsOverview() {
     }
     return parseFloat(val) || 0;
   };
+
+  // Staff docs created before this feature shipped have no `location` field
+  // at all — they default to Glendale (the office the app originally only
+  // tracked) rather than disappearing from both views.
+  const locationStaff = useMemo(
+    () => staff.filter((s) => (s.location || 'glendale') === officeLocation),
+    [staff, officeLocation]
+  );
 
   const financials = useMemo(() => {
     let dates = [];
@@ -94,7 +106,7 @@ export default function FinancialsOverview() {
     const deptCosts = {};
     const staffHours = {};
 
-    staff.forEach((member) => {
+    locationStaff.forEach((member) => {
       let totalH = 0;
       dates.forEach((d) => {
         totalH += parseHours(schedule[d]?.[member.id]);
@@ -116,9 +128,9 @@ export default function FinancialsOverview() {
     const drProdNeeded = calculateProductionNeeded(drCost, TARGETS.DOCTOR_OVERHEAD);
 
     return { staffCost, drCost, staffProdNeeded, drProdNeeded, deptCosts, staffHours };
-  }, [staff, ratesById, schedule, selectedDate, timeframe]);
+  }, [locationStaff, ratesById, schedule, selectedDate, timeframe]);
 
-  const collectionsVal = timeframe === 'daily' ? parseFloat(dailyLogs[selectedDate]?.collections) || 0 : 0;
+  const collectionsVal = timeframe === 'daily' ? parseFloat(dailyLogs[selectedDate]?.collections?.[officeLocation]) || 0 : 0;
   const ebitda = collectionsVal - (financials.staffCost + financials.drCost);
   const ebitdaPercent = collectionsVal > 0 ? (ebitda / collectionsVal) * 100 : 0;
 
@@ -210,8 +222,8 @@ export default function FinancialsOverview() {
               <div className="relative w-40">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
                 <CollectionsInput
-                  key={`${timeframe}-${selectedDate}`}
-                  initialValue={timeframe === 'daily' ? (dailyLogs[selectedDate]?.collections || '').toString() : ''}
+                  key={`${timeframe}-${selectedDate}-${officeLocation}`}
+                  initialValue={timeframe === 'daily' ? (dailyLogs[selectedDate]?.collections?.[officeLocation] || '').toString() : ''}
                   disabled={timeframe !== 'daily'}
                   onChange={handleCollectionsChange}
                 />
@@ -269,7 +281,7 @@ export default function FinancialsOverview() {
             </span>
           </div>
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {staff.map((member) => (
+            {locationStaff.map((member) => (
               <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200/80">
                 <div>
                   <div className="font-bold text-xs text-gray-800">{member.name}</div>
@@ -281,7 +293,7 @@ export default function FinancialsOverview() {
                 </div>
               </div>
             ))}
-            {staff.length === 0 && <div className="col-span-full text-center py-8 text-gray-400 text-xs font-semibold">No staff found.</div>}
+            {locationStaff.length === 0 && <div className="col-span-full text-center py-8 text-gray-400 text-xs font-semibold">No staff found.</div>}
           </div>
         </div>
       )}

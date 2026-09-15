@@ -12,6 +12,7 @@ import FinancialsOverview from '../components/financials/FinancialsOverview';
 import ScheduleGrid from '../components/financials/ScheduleGrid';
 import TeamDirectory from '../components/financials/TeamDirectory';
 import SegmentedControl from '../components/SegmentedControl';
+import { LOCATIONS } from '../utils/payrollConstants';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Calculator, adminOnly: true },
@@ -19,7 +20,7 @@ const TABS = [
   { id: 'team', label: 'Team', icon: Users },
 ];
 
-export default function Financials({ user, onToast }) {
+export default function Financials({ user, onToast, officeLocation, setOfficeLocation }) {
   const { isPayrollAdmin, loading } = usePayrollRole(user);
   // Null until the user explicitly picks a tab, so the default (which
   // depends on isPayrollAdmin, not known until usePayrollRole resolves) can
@@ -39,16 +40,19 @@ export default function Financials({ user, onToast }) {
 
   return (
     <div className="space-y-6">
-      <SegmentedControl
-        className="w-fit no-print"
-        options={visibleTabs.map((t) => ({ value: t.id, label: t.label, icon: t.icon }))}
-        value={tab}
-        onChange={setExplicitTab}
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <SegmentedControl
+          className="w-fit no-print"
+          options={visibleTabs.map((t) => ({ value: t.id, label: t.label, icon: t.icon }))}
+          value={tab}
+          onChange={setExplicitTab}
+        />
+        <SegmentedControl className="w-fit no-print" options={LOCATIONS} value={officeLocation} onChange={setOfficeLocation} />
+      </div>
 
-      {tab === 'overview' && isPayrollAdmin && <FinancialsOverview />}
-      {tab === 'schedule' && <ScheduleGrid isPayrollAdmin={isPayrollAdmin} onToast={onToast} />}
-      {tab === 'team' && <TeamDirectory user={user} isPayrollAdmin={isPayrollAdmin} onToast={onToast} />}
+      {tab === 'overview' && isPayrollAdmin && <FinancialsOverview officeLocation={officeLocation} />}
+      {tab === 'schedule' && <ScheduleGrid isPayrollAdmin={isPayrollAdmin} onToast={onToast} officeLocation={officeLocation} />}
+      {tab === 'team' && <TeamDirectory user={user} isPayrollAdmin={isPayrollAdmin} onToast={onToast} officeLocation={officeLocation} />}
     </div>
   );
 }
