@@ -377,15 +377,35 @@ Transcript: "${transcript}"
         const analysis = JSON.parse(gptData.choices[0].message.content);
 
         // Deterministic backstop against the AI naming an employee who was
-        // never actually mentioned: the prompt above discourages this, but
-        // GPT-4o-mini would still occasionally pick a name from the
-        // valid-staff list on transcripts where nobody self-identified
-        // (mostly short appointment-confirmation voicemails). Whatever the
-        // model returns, don't trust it unless the name literally appears
-        // in the transcript text.
-        if (analysis.employee_name && !transcript.toLowerCase().includes(analysis.employee_name.toLowerCase())) {
-            console.warn(`Discarding unsupported employee_name "${analysis.employee_name}" for ${callId} — not found in transcript text`);
-            analysis.employee_name = null;
+        // never actually mentioned, or misreading a PATIENT's name as the
+        // employee's. The prompt above discourages both, but GPT-4o-mini
+        // still does it occasionally — e.g. an ambiguously-punctuated
+        // Whisper transcript like "this message is for Dwyane calling from
+        // Family Dental Station" (missing the sentence break after the
+        // patient's name) reads as if the patient were the one calling.
+        //
+        // An earlier version of this check required the name to match a
+        // hardcoded valid-staff list (the same one used in the prompt
+        // above). That turned out to be actively harmful: the list was
+        // missing several real, currently-active callers (confirmed against
+        // payroll_staff and by dozens of consistent, identical
+        // self-introductions each), so it was rejecting genuine calls just
+        // as often as it caught bad ones. A hardcoded roster will always
+        // drift out of sync with who's actually calling.
+        //
+        // What actually distinguishes "the employee speaking" from "the
+        // employee addressing the patient by name" is the grammar, not
+        // whether the name is on a list: self-identification ("this is X",
+        // "it's X", "I'm X", "my name is X") near our own practice name,
+        // vs. any other mention. This requires no roster to maintain and
+        // correctly handles both failure modes above.
+        if (analysis.employee_name) {
+            const escapedName = analysis.employee_name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const selfIdPattern = new RegExp(`\\b(?:this is|it'?s|i'?m|my name is)\\s+${escapedName}\\b(?:[^.!?]{0,70})?(?:family dental|dr\\.?\\s*marr)`, 'i');
+            if (!selfIdPattern.test(transcript)) {
+                console.warn(`Discarding unsupported employee_name "${analysis.employee_name}" for ${callId} — no self-identification near the practice name found in transcript`);
+                analysis.employee_name = null;
+            }
         }
 
         await callRef.update({
