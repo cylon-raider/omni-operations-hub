@@ -17,6 +17,12 @@ import SegmentedControl from '../SegmentedControl';
 import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS } from '../../utils/payrollConstants';
 import { formatCurrency } from '../../utils/payrollCalculations';
 
+// New staff docs just need a unique id; Firestore's own auto-id would also
+// work, but this keeps the id human-readable in the console for debugging.
+function generateStaffId() {
+  return Date.now().toString();
+}
+
 export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   const [activeTab, setActiveTab] = useState('staff');
 
@@ -55,11 +61,12 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
       return () => unsub();
     }
 
+    // No setMyRate(null) reset needed here: myRate is only ever read (in
+    // getDisplayRate) for the one row whose email matches the logged-in
+    // user, and that row can't exist unless myStaff was found above — so a
+    // stale myRate value from a previous match is never actually displayed.
     const myStaff = staff.find((s) => s.email && user?.email && s.email.toLowerCase() === user.email.toLowerCase());
-    if (!myStaff) {
-      setMyRate(null);
-      return;
-    }
+    if (!myStaff) return;
     const unsub = onSnapshot(doc(db, 'payroll_staffRates', myStaff.id), (snap) => {
       setMyRate(snap.exists() ? snap.data().rate : null);
     }, () => setMyRate(null));
@@ -83,7 +90,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast }) {
   const handleSaveStaff = async (e) => {
     e.preventDefault();
     const memberData = { name, department: dept, role, email: email.trim() };
-    const staffId = isEditing ? isEditing.id : Date.now().toString();
+    const staffId = isEditing ? isEditing.id : generateStaffId();
     try {
       if (isEditing) {
         await updateDoc(doc(db, 'payroll_staff', staffId), memberData);

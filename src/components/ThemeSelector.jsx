@@ -17,16 +17,17 @@ const THEMES = [
 
 export default function ThemeSelector() {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState('emerald');
+  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('fds_theme') || 'emerald');
   const modalRef = useRef(null);
 
+  // Applies the persisted theme to the DOM on mount. Later changes go through
+  // handleSelectTheme below, which updates the DOM itself, so this only needs
+  // to run when currentTheme was set from localStorage rather than a click.
   useEffect(() => {
-    const saved = localStorage.getItem('fds_theme') || 'emerald';
-    setCurrentTheme(saved);
-    if (saved !== 'emerald') {
-      document.documentElement.setAttribute('data-theme', saved);
+    if (currentTheme !== 'emerald') {
+      document.documentElement.setAttribute('data-theme', currentTheme);
     }
-  }, []);
+  }, [currentTheme]);
 
   useEffect(() => {
     function handleClickOutside(event) {

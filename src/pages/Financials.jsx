@@ -5,7 +5,7 @@
 // internal tabs (Overview, Schedule, Team) instead of separate routes, so the
 // sidebar keeps its single link. Overview is admin-only (payroll rates/EBITDA).
 // -----------------------------------------------------------------------------
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Calculator, CalendarDays, Users } from 'lucide-react';
 import { usePayrollRole } from '../hooks/usePayrollRole';
 import FinancialsOverview from '../components/financials/FinancialsOverview';
@@ -21,13 +21,11 @@ const TABS = [
 
 export default function Financials({ user, onToast }) {
   const { isPayrollAdmin, loading } = usePayrollRole(user);
-  const [tab, setTab] = useState(null);
-
-  useEffect(() => {
-    if (!loading && tab === null) {
-      setTab(isPayrollAdmin ? 'overview' : 'schedule');
-    }
-  }, [loading, isPayrollAdmin, tab]);
+  // Null until the user explicitly picks a tab, so the default (which
+  // depends on isPayrollAdmin, not known until usePayrollRole resolves) can
+  // be derived below instead of synced in via an effect.
+  const [explicitTab, setExplicitTab] = useState(null);
+  const tab = explicitTab ?? (loading ? null : (isPayrollAdmin ? 'overview' : 'schedule'));
 
   if (loading || tab === null) {
     return (
@@ -45,7 +43,7 @@ export default function Financials({ user, onToast }) {
         className="w-fit no-print"
         options={visibleTabs.map((t) => ({ value: t.id, label: t.label, icon: t.icon }))}
         value={tab}
-        onChange={setTab}
+        onChange={setExplicitTab}
       />
 
       {tab === 'overview' && isPayrollAdmin && <FinancialsOverview />}

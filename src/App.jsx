@@ -11,7 +11,7 @@ import { Menu, Clock } from 'lucide-react';
 
 import { useAuth } from './hooks/useAuth';
 import { useCalls } from './hooks/useCalls';
-import { useToast } from './components/Toast';
+import { useToast } from './hooks/useToast';
 
 import LoginScreen from './components/LoginScreen';
 import Sidebar from './components/Sidebar';

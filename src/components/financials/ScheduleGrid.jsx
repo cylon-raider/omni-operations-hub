@@ -99,32 +99,29 @@ const ScheduleCell = ({ date, memberId, schedule, onUpdate, isPayrollAdmin }) =>
 
   const [start, setStart] = useState(dbStart);
   const [end, setEnd] = useState(dbEnd);
+  const [prevRawValue, setPrevRawValue] = useState(rawValue);
 
-  useEffect(() => {
-    const val = schedule[date]?.[memberId] || '';
-    if (val.includes('-')) {
-      const [s, e] = val.split('-');
-      setStart(s);
-      setEnd(e);
-    } else {
-      setStart('');
-      setEnd('');
-    }
-  }, [schedule, date, memberId]);
+  // Resync local editable state when the schedule value changes for a
+  // reason other than this cell's own blur below (e.g. another admin
+  // editing concurrently) — updated directly during render, React's
+  // documented pattern for "adjusting state when a prop changes" without
+  // an Effect (avoids resetting mid-edit on every unrelated schedule write).
+  if (rawValue !== prevRawValue) {
+    setPrevRawValue(rawValue);
+    setStart(dbStart);
+    setEnd(dbEnd);
+  }
 
   const handleBlur = () => {
     if (!isPayrollAdmin) return;
     const formattedStart = formatSmartTime(start);
     const formattedEnd = formatSmartTime(end, true);
+    const newRawValue = formattedStart || formattedEnd ? `${formattedStart}-${formattedEnd}` : '';
 
     setStart(formattedStart);
     setEnd(formattedEnd);
-
-    if (formattedStart || formattedEnd) {
-      onUpdate(date, memberId, `${formattedStart}-${formattedEnd}`);
-    } else {
-      onUpdate(date, memberId, '');
-    }
+    setPrevRawValue(newRawValue);
+    onUpdate(date, memberId, newRawValue);
   };
 
   const hours = calculateHoursFromTimes(start, end);

@@ -15,11 +15,9 @@ export function usePayrollRole(user) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
-      setPayrollRole(null);
-      setLoading(false);
-      return;
-    }
+    // Nothing to subscribe to when logged out; the returned values below
+    // already fall back to null/not-loading in that case.
+    if (!user) return;
 
     const userRef = doc(db, 'users', user.uid);
 
@@ -49,5 +47,9 @@ export function usePayrollRole(user) {
     return () => unsubscribe();
   }, [user]);
 
-  return { payrollRole, isPayrollAdmin: payrollRole === 'admin', loading };
+  return {
+    payrollRole: user ? payrollRole : null,
+    isPayrollAdmin: !!user && payrollRole === 'admin',
+    loading: user ? loading : false,
+  };
 }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Trophy, Calendar, CalendarDays, CalendarCheck2, History, X } from 'lucide-react';
+import { Trophy, Calendar, CalendarDays, CalendarCheck2, History } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { ErrorBoundary } from './ErrorBoundary';
 import { isCallOutbound, resolveEmployeeAlias } from '../utils/outboundCall';
@@ -31,7 +31,7 @@ const ModalCallItem = ({ call, allCalls = [] }) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const isOutbound = call.direction === 'outbound' || call.isOutbound;
   
-  let displayName = 'Unknown Caller';
+  let displayName;
   let displayPhone = 'No phone provided';
 
   if (isOutbound) {
@@ -110,20 +110,22 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
   // only when someone actually selects that tab — rather than kept live in
   // memory for every user by default.
   const [allTimeCalls, setAllTimeCalls] = useState(null);
-  const [allTimeLoading, setAllTimeLoading] = useState(false);
+  const [allTimeFetchFailed, setAllTimeFetchFailed] = useState(false);
+  const allTimeLoading = timeframe === 'all' && allTimeCalls === null && !allTimeFetchFailed;
 
   useEffect(() => {
     if (timeframe !== 'all' || !officeLocation) return;
     let cancelled = false;
-    setAllTimeLoading(true);
     const q = query(collection(db, CALLS_PATH), where('location', '==', officeLocation));
     getDocs(q)
       .then((snap) => {
         if (cancelled) return;
         setAllTimeCalls(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       })
-      .catch((err) => console.error('Failed to fetch all-time calls:', err))
-      .finally(() => { if (!cancelled) setAllTimeLoading(false); });
+      .catch((err) => {
+        console.error('Failed to fetch all-time calls:', err);
+        if (!cancelled) setAllTimeFetchFailed(true);
+      });
     return () => { cancelled = true; };
   }, [timeframe, officeLocation]);
 
@@ -285,7 +287,7 @@ export default function OutboundLeaderboardCard({ calls = [], officeLocation }) 
 
       {/* Leaderboard Results */}
       <div className="flex flex-wrap gap-3 relative z-10">
-        {timeframe === 'all' && allTimeLoading && allTimeCalls === null ? (
+        {allTimeLoading ? (
           <div className="w-full text-center py-6 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
             <span className="text-sm font-semibold text-gray-500">Loading all-time history…</span>
           </div>
