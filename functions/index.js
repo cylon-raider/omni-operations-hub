@@ -348,6 +348,7 @@ Return a JSON object with the following properties:
 7. "is_outbound": true if this is an outbound call from the office to a patient.
 8. "is_resolved": true if the caller's request was completed, false if they need a callback or follow-up.
 9. "patient_name": The first and last name of the patient (or caller). Extract this from the transcript if mentioned, otherwise return null.
+10. "sentiment_score": A number from -1.0 (very negative/upset) to 1.0 (very positive/happy) rating the caller's overall mood on a continuous scale, where 0.0 is neutral. Use the full range to reflect nuance — e.g. a caller who is mostly fine but mildly annoyed might be -0.3, not a flat -1.0.
 
 Transcript: "${transcript}"
 `;
@@ -377,6 +378,9 @@ Transcript: "${transcript}"
             transcript,
             summary: analysis.summary || "",
             sentiment: analysis.sentiment || "Neutral",
+            sentimentScore: (typeof analysis.sentiment_score === 'number' && !isNaN(analysis.sentiment_score))
+                ? Math.max(-1, Math.min(1, analysis.sentiment_score))
+                : null,
             priority: analysis.priority || "NORMAL",
             assignment: analysis.assignment || "Front Desk Supervisor",
             reason: analysis.reason || "",

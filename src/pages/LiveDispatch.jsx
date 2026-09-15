@@ -11,6 +11,7 @@ import QueueHeader from '../components/QueueHeader';
 import QuickEntryForm from '../components/QuickEntryForm';
 import QueueSection from '../components/QueueSection';
 import OutboundLeaderboardCard from '../components/OutboundLeaderboardCard';
+import SentimentTrendsCard from '../components/SentimentTrendsCard';
 import SegmentedControl from '../components/SegmentedControl';
 import { isCallOutbound } from '../utils/outboundCall';
 
@@ -119,6 +120,13 @@ export default function LiveDispatch({ user, calls, activeCalls, resolvedCalls, 
         This component calculates who made the most outbound calls today/week/month.
       */}
       <OutboundLeaderboardCard calls={calls} officeLocation={officeLocation} />
+
+      {/*
+        Caller Sentiment
+        AI-assessed sentiment gauge, tallied by day/week/month/all-time —
+        covers every call with a transcript, inbound and outbound alike.
+      */}
+      <SentimentTrendsCard calls={calls} officeLocation={officeLocation} />
 
       {/* 
         4. Manual Callback Form
