@@ -22,7 +22,12 @@ export const NAME_ALIASES = {
   'tim': 'IGNORE',
 };
 
-const GLENDALE_STAFF = ['jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 'devin', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 'pam', 'eylianna', 'dan'];
+// 'devin' removed — no longer works here, so she shouldn't be recognized as
+// a valid employee for NEW calls to be classified outbound against. The
+// 'devon' -> 'DEVIN' alias above stays: it's spelling normalization for
+// existing historical records (merging a misheard "Devon" into "Devin"
+// rather than fragmenting the two), unrelated to current employment.
+const GLENDALE_STAFF = ['jen', 'lisa', 'jamie', 'addison', 'mariana', 'brandy', 'liz', 'alessia', 'marianne', 'aubrey', 'marah', 'pam', 'eylianna', 'dan'];
 const LITCHFIELD_STAFF = ['jen', 'melia', 'cynthia', 'lupita', 'rachel', 'aron'];
 
 /**
