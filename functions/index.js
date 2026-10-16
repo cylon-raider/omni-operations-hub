@@ -223,6 +223,21 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                 // Fallback for missing recordings / test calls
                 const target = event.payload ? event.payload : event;
                 target.location = location;
+
+                // Since 2026-10-13 Mango stopped including recording_url in
+                // call_log events, so real calls land here too. Without this
+                // they'd keep Mango's raw status ("answered", "hangup") and
+                // the generic default summary. Test payloads carry their own
+                // summary, so leave those alone.
+                if (!recordingUrl && !data.summary) {
+                    const noRecordingMsg = "No recording received from Mango Voice — transcript unavailable.";
+                    target.summary = noRecordingMsg;
+                    await callRef.set({
+                        summary: noRecordingMsg,
+                        status: "Waiting",
+                        location: location
+                    }, { merge: true });
+                }
             }
 
             processedEvents.push(event);
