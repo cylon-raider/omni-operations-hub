@@ -5,11 +5,19 @@
 // It handles displaying the call data, as well as providing the UI for editing,
 // claiming (In Progress), resolving, or deleting the call.
 // -----------------------------------------------------------------------------
-import React, { useState } from 'react';
-import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle, Upload, Loader2 } from 'lucide-react';
 import { OWNER_EMAILS } from '../utils/payrollConstants';
 import { getSentimentScore } from '../utils/sentiment';
 import SentimentGauge from './SentimentGauge';
+
+// Staff can attach a recording they downloaded from Mango's web app to a call
+// that arrived without audio; this hits the uploadRecording Cloud Function,
+// which caches it and runs the normal transcribe + analyze pipeline. Override
+// the base with VITE_FUNCTIONS_BASE if the deployed function URL differs.
+const UPLOAD_URL =
+  (import.meta.env.VITE_FUNCTIONS_BASE || 'https://us-central1-fds-operations-hub.cloudfunctions.net') +
+  '/uploadRecording';
 
 const PRIORITY_STYLES = {
   URGENT: 'bg-red-100 text-red-700',
@@ -62,6 +70,9 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   const [editPriority, setEditPriority] = useState(call.priority || 'NORMAL');
   const [confirming, setConfirming] = useState(null); // Can be 'resolve', 'delete', or null
   const [showTranscript, setShowTranscript] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState(null);
+  const fileInputRef = useRef(null);
 
   // --------------------------------------------------------------------------
   // Admin Check
@@ -90,6 +101,38 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   const handleStatusAdvance = () => {
     if (displayStatus === 'Waiting') {
       onUpdate(call.id, { status: 'In Progress' });
+    }
+  };
+
+  // Upload a recording the user downloaded from Mango, then let the backend
+  // transcribe it. On success the Firestore listener refreshes this card with
+  // the new summary/transcript, so there's nothing to update locally.
+  const handleUploadFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so the same file can be re-selected later
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      setUploadErr('That file is larger than 25 MB.');
+      return;
+    }
+    setUploadErr(null);
+    setUploading(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${UPLOAD_URL}?callId=${encodeURIComponent(call.id)}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `Upload failed (${res.status}).`);
+    } catch (err) {
+      setUploadErr(err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -145,6 +188,10 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
                 </p>
               )}
             </div>
+          )}
+
+          {uploadErr && (
+            <p className="text-[11px] text-red-600 mt-2 font-medium">{uploadErr}</p>
           )}
         </div>
 
@@ -258,6 +305,25 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
           >
             <Edit3 size={12} /> Edit
           </button>
+          {!call.transcript && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.m4a"
+                className="hidden"
+                onChange={handleUploadFile}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors disabled:opacity-60"
+              >
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                {uploading ? 'Transcribing…' : 'Add Recording'}
+              </button>
+            </>
+          )}
           {displayPriority !== 'ESCALATED' && (
             <button
               onClick={() => onUpdate(call.id, { priority: 'ESCALATED', status: 'Waiting' })}
