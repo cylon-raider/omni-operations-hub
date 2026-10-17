@@ -560,6 +560,99 @@ exports.reprocessFailed = onRequest({ timeoutSeconds: 300 }, async (req, res) =>
     }
 });
 
+/**
+ * ----------------------------------------------------------------------------
+ * Manual Recording Upload (staff-facing fallback)
+ * ----------------------------------------------------------------------------
+ * Since 2026-10-13 Mango stopped sending recording_url to our (customer-built,
+ * non-"verified") webhook, so new calls arrive with no audio to transcribe.
+ * The recordings still exist in Mango's web app, where a human can click
+ * "Download audio". This endpoint lets a signed-in hub user attach that
+ * downloaded file to the matching call: we cache the bytes under the callId and
+ * run the exact same transcribe -> analyze pipeline the webhook uses.
+ *
+ * It relies on processAudioAndAnalyze reading the Storage cache *before* it
+ * fetches any URL, so the uploaded bytes are used directly and the recordingUrl
+ * argument below is an unused placeholder.
+ *
+ * Auth: requires a valid Firebase ID token (the same login the SPA uses). The
+ * raw request body is the audio file; callId comes in as a query param.
+ */
+exports.uploadRecording = onRequest({ timeoutSeconds: 300, memory: "512MiB", invoker: "public" }, async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.set("Access-Control-Max-Age", "3600");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+
+    try {
+        // Only signed-in hub users may upload — verify the Firebase ID token.
+        const authHeader = req.get("Authorization") || "";
+        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
+        let uploader;
+        try {
+            uploader = await admin.auth().verifyIdToken(idToken);
+        } catch (e) {
+            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
+        }
+
+        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+        if (!OPENAI_API_KEY) return res.status(500).json({ ok: false, error: "OpenAI key not configured." });
+
+        const rawCallId = Array.isArray(req.query.callId) ? req.query.callId[0] : req.query.callId;
+        const callId = (rawCallId || "").toString().trim();
+        if (!callId) return res.status(400).json({ ok: false, error: "Missing callId." });
+
+        const audioBuffer = req.rawBody;
+        if (!audioBuffer || audioBuffer.length === 0) {
+            return res.status(400).json({ ok: false, error: "No audio data received." });
+        }
+        if (audioBuffer.length > 25 * 1024 * 1024) {
+            return res.status(413).json({ ok: false, error: "Audio exceeds the 25 MB limit (OpenAI's cap)." });
+        }
+
+        const callRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls").doc(callId);
+        const snap = await callRef.get();
+        if (!snap.exists) return res.status(404).json({ ok: false, error: `No call found with id ${callId}.` });
+
+        const data = snap.data();
+        const location = data.location || "glendale";
+        const toNumber = data.toNumber || "";
+        const direction = data.direction || "unknown";
+
+        // Mark it processing + record who supplied the audio (for the audit trail).
+        await callRef.set({
+            status: "Processing",
+            recordingSource: "manual-upload",
+            recordingUploadedBy: uploader.email || uploader.uid,
+            recordingUploadedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        // Cache the uploaded bytes under this callId. processAudioAndAnalyze reads
+        // the cache first, so it transcribes these bytes directly — the
+        // "manual-upload" recordingUrl below is never actually fetched.
+        await cacheRecording(callId, audioBuffer);
+
+        const analysis = await processAudioAndAnalyze(callId, "manual-upload", OPENAI_API_KEY, null, toNumber, location, direction);
+        if (!analysis) {
+            return res.status(502).json({ ok: false, error: "Transcription failed — the call is marked Transcription Error." });
+        }
+
+        return res.status(200).json({
+            ok: true,
+            callId,
+            summary: analysis.summary,
+            priority: analysis.priority,
+            assignment: analysis.assignment,
+        });
+    } catch (e) {
+        console.error("uploadRecording error:", e);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 exports.debugDb = require('./debug').debugDb;
 exports.fixCalls = require('./debug').fixCalls;
 exports.clearErrors = require('./debug').clearErrors;
