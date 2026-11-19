@@ -6,7 +6,7 @@
 // claiming (In Progress), resolving, or deleting the call.
 // -----------------------------------------------------------------------------
 import React, { useState, useRef } from 'react';
-import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle, Upload, Loader2 } from 'lucide-react';
+import { Phone, Clock, Edit3, CheckCircle, Trash2, ChevronUp, AlertTriangle, Upload, Loader2, UserSearch, CalendarClock } from 'lucide-react';
 import { OWNER_EMAILS } from '../utils/payrollConstants';
 import { getSentimentScore } from '../utils/sentiment';
 import SentimentGauge from './SentimentGauge';
@@ -15,9 +15,11 @@ import SentimentGauge from './SentimentGauge';
 // that arrived without audio; this hits the uploadRecording Cloud Function,
 // which caches it and runs the normal transcribe + analyze pipeline. Override
 // the base with VITE_FUNCTIONS_BASE if the deployed function URL differs.
-const UPLOAD_URL =
-  (import.meta.env.VITE_FUNCTIONS_BASE || 'https://us-central1-fds-operations-hub.cloudfunctions.net') +
-  '/uploadRecording';
+const FUNCTIONS_BASE =
+  import.meta.env.VITE_FUNCTIONS_BASE || 'https://us-central1-fds-operations-hub.cloudfunctions.net';
+const UPLOAD_URL = FUNCTIONS_BASE + '/uploadRecording';
+// Re-runs the Dentrix patient lookup for one call (see functions/dentrix.js).
+const DENTRIX_LOOKUP_URL = FUNCTIONS_BASE + '/lookupDentrix';
 
 const PRIORITY_STYLES = {
   URGENT: 'bg-red-100 text-red-700',
@@ -59,6 +61,75 @@ function timeAgo(timestamp) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+// "2026-11-24T09:00:00" (clinic-local wall time) -> "Tue, Nov 24 · 9:00 AM".
+// Built from the wall-clock parts so the viewer's own time zone can't shift it.
+function formatApptTime(appt) {
+  const wall = appt?.wallStartTime;
+  const m = wall && wall.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  const date = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : (appt?.startTime ? new Date(appt.startTime) : null);
+  if (!date || isNaN(date)) return null;
+  const day = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${day} · ${time}`;
+}
+
+// Who this caller is in Dentrix Ascend, filled in by the backend lookup.
+function DentrixInfo({ dentrix }) {
+  if (!dentrix || dentrix.status === 'skipped' || dentrix.status === 'error') return null;
+
+  if (dentrix.status === 'none') {
+    return (
+      <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-1">
+        <UserSearch size={12} /> Not found in Dentrix — possibly a new caller
+      </div>
+    );
+  }
+
+  const patients = dentrix.patients || [];
+  const extra = (dentrix.matchCount || patients.length) - patients.length;
+  return (
+    <div className="mt-2 bg-white p-2 rounded-lg border border-sky-100 space-y-1">
+      {dentrix.status === 'multiple' && (
+        <div className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">
+          {dentrix.matchCount} patients share this number
+        </div>
+      )}
+      {patients.map((p) => {
+        const when = formatApptTime(p.nextAppointment);
+        return (
+          <div key={p.id} className="text-xs text-gray-700 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+            <span className="flex items-center gap-1 font-bold text-sky-800">
+              <UserSearch size={12} /> {p.name}
+            </span>
+            {p.chartNumber && <span className="text-gray-400">#{p.chartNumber}</span>}
+            {p.isNewPatient && (
+              <span className="text-[9px] font-bold bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full">NEW PATIENT</span>
+            )}
+            {p.state && p.state !== 'ACTIVE' && p.state !== 'NEW_PATIENT' && (
+              <span className="text-[9px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{p.state}</span>
+            )}
+            <span className="flex items-center gap-1 text-gray-500">
+              <CalendarClock size={12} />
+              {when ? (
+                <>
+                  Next: {when}
+                  {p.nextAppointment.description && <span className="text-gray-400">({p.nextAppointment.description})</span>}
+                  <span className={p.nextAppointment.confirmed ? 'text-primary-700 font-bold' : 'text-amber-700 font-bold'}>
+                    {p.nextAppointment.confirmed ? 'Confirmed' : 'Unconfirmed'}
+                  </span>
+                </>
+              ) : (
+                'No upcoming appointment'
+              )}
+            </span>
+          </div>
+        );
+      })}
+      {extra > 0 && <div className="text-[10px] text-gray-400">+{extra} more in Dentrix</div>}
+    </div>
+  );
+}
+
 export default function CallCard({ call, onUpdate, onResolve, onDelete, user, officeLocation = 'glendale' }) {
   // --------------------------------------------------------------------------
   // Component State
@@ -72,6 +143,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
   const [showTranscript, setShowTranscript] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const fileInputRef = useRef(null);
 
   // --------------------------------------------------------------------------
@@ -136,6 +208,28 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
     }
   };
 
+  // Ask the backend to look this caller up in Dentrix. The result lands on the
+  // call doc, so the Firestore listener refreshes the card — nothing to set here.
+  const handleDentrixLookup = async () => {
+    setUploadErr(null);
+    setLookingUp(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${DENTRIX_LOOKUP_URL}?callId=${encodeURIComponent(call.id)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `Dentrix lookup failed (${res.status}).`);
+    } catch (err) {
+      setUploadErr(err.message || 'Dentrix lookup failed.');
+    } finally {
+      setLookingUp(false);
+    }
+  };
+  const canLookUpDentrix =
+    call.direction !== 'internal' && (!call.dentrix || call.dentrix.status === 'error');
+
   return (
     <div className="p-4 bg-gray-50 hover:bg-gray-100/80 transition-colors rounded-xl border border-gray-200/80 group">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -166,6 +260,8 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
               </>
             )}
           </div>
+
+          <DentrixInfo dentrix={call.dentrix} />
 
           {call.summary && (
             <p className="text-xs text-gray-600 mt-2 bg-white p-2 rounded-lg border border-gray-200/60 italic">
@@ -323,6 +419,16 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
                 {uploading ? 'Transcribing…' : 'Add Recording'}
               </button>
             </>
+          )}
+          {canLookUpDentrix && (
+            <button
+              onClick={handleDentrixLookup}
+              disabled={lookingUp}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors disabled:opacity-60"
+            >
+              {lookingUp ? <Loader2 size={12} className="animate-spin" /> : <UserSearch size={12} />}
+              {lookingUp ? 'Searching…' : 'Find in Dentrix'}
+            </button>
           )}
           {displayPriority !== 'ESCALATED' && (
             <button

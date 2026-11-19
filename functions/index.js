@@ -11,6 +11,7 @@ const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { Buffer } = require("buffer");
 const { randomUUID } = require("crypto");
+const { ZATANNA_API_KEY, enrichCallWithDentrix } = require("./dentrix");
 
 // Initialize Firebase Admin (Required to talk to the database securely)
 // storageBucket is explicit rather than relying on auto-detection - see the
@@ -69,7 +70,7 @@ const GOOGLE_SHEET_WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "";
  * This function creates a public URL on the internet. Mango Voice is configured
  * to send data to this URL every time a phone call happens.
  */
-exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, async (req, res) => {
+exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
     // A quick health-check. If you visit this URL in your browser (a GET request),
     // it will just say "Active & Online!"
     if (req.method === "GET") {
@@ -166,6 +167,19 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
             }, { merge: true });
 
             // ----------------------------------------------------------------
+            // Step 1b: Look the caller up in Dentrix Ascend (read-only)
+            // ----------------------------------------------------------------
+            // Runs alongside the AI step below rather than before it, and is
+            // awaited at the end of this loop iteration. enrichCallWithDentrix
+            // never throws for lookup failures; the .catch is for Firestore.
+            const dentrixLookup = enrichCallWithDentrix(callRef, ZATANNA_API_KEY.value(), {
+                location,
+                direction: data.direction || 'unknown',
+                fromNumber,
+                toNumber,
+            }).catch((err) => console.warn(`[Call ${callId}] Dentrix enrichment failed:`, err.message));
+
+            // ----------------------------------------------------------------
             // Step 2: Process Audio with AI (OpenAI)
             // ----------------------------------------------------------------
             // If there is an audio recording, we send it to OpenAI to transcribe
@@ -239,6 +253,8 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public" }, asy
                     }, { merge: true });
                 }
             }
+
+            await dentrixLookup;
 
             processedEvents.push(event);
             processed++;
@@ -649,6 +665,60 @@ exports.uploadRecording = onRequest({ timeoutSeconds: 300, memory: "512MiB", inv
         });
     } catch (e) {
         console.error("uploadRecording error:", e);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * ----------------------------------------------------------------------------
+ * Dentrix lookup on demand (staff-facing)
+ * ----------------------------------------------------------------------------
+ * The webhook looks every new call up in Dentrix automatically. This endpoint
+ * lets a signed-in hub user (re)run that lookup for one call — for calls
+ * logged before the integration existed, or after a failed lookup. Read-only
+ * against Dentrix; it only writes the `dentrix` field on our own call doc.
+ */
+exports.lookupDentrix = onRequest({ timeoutSeconds: 60, invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.set("Access-Control-Max-Age", "3600");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+
+    try {
+        const authHeader = req.get("Authorization") || "";
+        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
+        try {
+            await admin.auth().verifyIdToken(idToken);
+        } catch (e) {
+            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
+        }
+
+        const apiKey = ZATANNA_API_KEY.value();
+        if (!apiKey) return res.status(500).json({ ok: false, error: "Dentrix (Zatanna) key not configured." });
+
+        const rawCallId = Array.isArray(req.query.callId) ? req.query.callId[0] : req.query.callId;
+        const callId = (rawCallId || "").toString().trim();
+        if (!callId) return res.status(400).json({ ok: false, error: "Missing callId." });
+
+        const callRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls").doc(callId);
+        const snap = await callRef.get();
+        if (!snap.exists) return res.status(404).json({ ok: false, error: `No call found with id ${callId}.` });
+        const data = snap.data();
+
+        const dentrix = await enrichCallWithDentrix(callRef, apiKey, {
+            location: data.location || "glendale",
+            direction: data.direction || "unknown",
+            fromNumber: data.fromNumber || "",
+            toNumber: data.toNumber || "",
+        });
+        if (!dentrix) return res.status(400).json({ ok: false, error: "Internal calls aren't looked up in Dentrix." });
+        if (dentrix.status === "error") return res.status(502).json({ ok: false, error: dentrix.reason });
+        return res.status(200).json({ ok: true, status: dentrix.status, matchCount: dentrix.matchCount || 0 });
+    } catch (e) {
+        console.error("lookupDentrix error:", e);
         return res.status(500).json({ ok: false, error: e.message });
     }
 });
