@@ -610,7 +610,7 @@ exports.uploadRecording = onRequest({ timeoutSeconds: 300, memory: "512MiB", inv
         let uploader;
         try {
             uploader = await admin.auth().verifyIdToken(idToken);
-        } catch (e) {
+        } catch {
             return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
         }
 
@@ -692,7 +692,7 @@ exports.lookupDentrix = onRequest({ timeoutSeconds: 60, invoker: "public", secre
         if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
         try {
             await admin.auth().verifyIdToken(idToken);
-        } catch (e) {
+        } catch {
             return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
         }
 
