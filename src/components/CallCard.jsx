@@ -284,7 +284,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
             <div className="mt-1.5">
               <button
                 onClick={() => setShowTranscript(!showTranscript)}
-                className="text-[10px] font-bold text-gray-500 hover:text-primary-600 uppercase tracking-wider transition-colors"
+                className="text-[10px] font-bold text-gray-500 hover:text-primary-600 uppercase tracking-wider whitespace-nowrap transition-colors"
               >
                 {showTranscript ? 'Hide Transcript' : 'See Transcript'}
               </button>
@@ -385,20 +385,20 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
         </div>
       )}
 
-      {/* Action Buttons - visible on hover or always on mobile */}
+      {/* Action Buttons - always visible (no hover on phones); wrap onto a second row on narrow screens */}
       {!editing && !confirming && (
-        <div className="mt-3 pt-3 border-t border-gray-200/60 flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity sm:opacity-100 sm:group-hover:opacity-100">
+        <div className="mt-3 pt-3 border-t border-gray-200/60 flex flex-wrap items-center gap-2">
           {displayStatus === 'Waiting' && (
             <button
               onClick={handleStatusAdvance}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors"
             >
               <ChevronUp size={12} /> Start
             </button>
           )}
           <button
             onClick={() => setConfirming('resolve')}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-700 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors"
           >
             <CheckCircle size={12} /> Complete
           </button>
@@ -408,7 +408,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
               setEditPriority(call.priority || 'NORMAL');
               setEditing(true);
             }}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors"
           >
             <Edit3 size={12} /> Edit
           </button>
@@ -424,7 +424,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors disabled:opacity-60"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-60"
               >
                 {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                 {uploading ? 'Transcribing…' : 'Add Recording'}
@@ -435,7 +435,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
             <button
               onClick={handleDentrixLookup}
               disabled={lookingUp}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors disabled:opacity-60"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-60"
             >
               {lookingUp ? <Loader2 size={12} className="animate-spin" /> : <UserSearch size={12} />}
               {lookingUp ? 'Searching…' : 'Find in Dentrix'}
@@ -444,7 +444,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
           {displayPriority !== 'ESCALATED' && (
             <button
               onClick={() => onUpdate(call.id, { priority: 'ESCALATED', status: 'Waiting' })}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors"
             >
               <AlertTriangle size={12} /> Escalate
             </button>
@@ -452,7 +452,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
           {isAdmin && (
             <button
               onClick={() => setConfirming('delete')}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors ml-auto"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 font-bold rounded-lg text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors ml-auto"
             >
               <Trash2 size={12} />
             </button>
