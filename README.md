@@ -55,6 +55,10 @@ npm install
 # OPENAI_API_KEY=your_openai_key
 # MANGO_TOKEN=your_mango_api_token
 # GOOGLE_SHEET_WEBHOOK_URL=your_apps_script_url
+#
+# The Dentrix patient lookup reads its Zatanna API key from Secret Manager
+# (not .env). Set it once before deploying functions:
+#   firebase functions:secrets:set ZATANNA_API_KEY
 ```
 
 ### 4. Deployment

@@ -4,6 +4,14 @@
 // automatically for anyone who hasn't seen the newest date yet.
 export const CHANGELOG = [
   {
+    date: '2026-11-19',
+    items: [
+      'Calls now show who the caller is in Dentrix: the hub looks up the caller\'s phone number in that office\'s Dentrix Ascend and shows the patient\'s name, chart number, and their next appointment (with whether it\'s confirmed) right on the call card.',
+      'If several family members share one phone number, you\'ll see each of them listed. If the number isn\'t in Dentrix at all, the card says so — that\'s often a new patient calling.',
+      'For calls that came in before this was turned on, click the blue "Find in Dentrix" button on the call to look it up.',
+    ],
+  },
+  {
     date: '2026-10-17',
     items: [
       'Heads up: on Oct 13 our phone system (Dentrix Ascend Phones / Mango) stopped sending call recordings to the hub, so newer calls come in without an AI transcript, summary, or priority. We\'re working with the vendor on a permanent fix.',

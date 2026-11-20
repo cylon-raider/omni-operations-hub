@@ -81,7 +81,14 @@ This module lives at the same `/financials` route and shares the same Firebase A
 4. **Office location** is shared with call dispatch: `Financials.jsx` receives the same `officeLocation`/`setOfficeLocation` state `App.jsx` already holds for `LiveDispatch.jsx`, rather than keeping its own copy. Each `payroll_staff` doc carries a `location` field (`glendale`/`litchfield`, defaulting to `glendale` if absent) that `TeamDirectory.jsx`, `ScheduleGrid.jsx`, and `FinancialsOverview.jsx` all filter by. `payroll_dailyLogs/{date}.collections` is a map keyed by office (`{ glendale: n, litchfield: n }`, not a single practice-wide number), so each office's EBITDA is computed against its own collections.
 5. **`functions/scripts/`** holds one-off Node scripts (data migration, diagnostics) used to move real data over from a previously separate `fds-payroll` Firebase project — not deployed as Cloud Functions, run locally with `node functions/scripts/<name>.js`.
 
-## 6. Understanding the Source Code
+## 6. Dentrix Ascend Patient Lookup
+
+1. **`functions/dentrix.js`** looks up the *other party's* phone number (the caller on inbound calls, the number dialed on outbound) in that office's Dentrix Ascend, and stores a minimal `dentrix` field on the call doc: match status (`matched` / `multiple` / `none` / `skipped` / `error`), and for up to 3 patients their name, chart number, state, and next non-cancelled appointment. No birth dates, addresses, insurance, or SSNs are stored.
+2. Dentrix is reached through **Zatanna** (`api.zatanna.ai`), which keeps a logged-in Dentrix Ascend session per office (session ids for Glendale/Litchfield are in `dentrix.js`). Only read-only operations are called (`searchContacts`, `listFutureAppointments`). The API key is the `ZATANNA_API_KEY` secret in Secret Manager, never in the repo.
+3. **`mangoWebhook`** runs the lookup alongside the AI transcription step for every non-internal call, so it never delays the call appearing. **`lookupDentrix`** (signed-in users only) re-runs it for one call; `CallCard.jsx` shows a "Find in Dentrix" button for calls with no lookup yet or a failed one.
+4. Note: Zatanna's Dentrix integration has **no call-recording or transcript operations** — Dentrix never held the audio — so it does not replace Mango as a recording source.
+
+## 7. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 
