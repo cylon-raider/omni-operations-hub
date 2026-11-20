@@ -248,7 +248,7 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
                 {CALL_KIND_BADGES[call.callKind].label}
               </span>
             )}
-            {call.reason && (
+            {call.reason && call.reason.toLowerCase() !== CALL_KIND_BADGES[call.callKind]?.label.toLowerCase() && (
               <span className="text-[10px] font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
                 {call.reason}
               </span>

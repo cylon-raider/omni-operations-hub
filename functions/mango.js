@@ -59,6 +59,19 @@ const REQUEST_TIMEOUT_MS = 30000;
 // Sync statuses that mean "never look at this call again".
 const FINAL_STATUSES = new Set(["done", "has_transcript", "labeled", "no_recording", "unmatched", "ineligible"]);
 
+/** A missed call long enough that its recording may hold a message (e.g. left with the after-hours answering service). */
+const mayHaveMessage = (call) => (call.durationSeconds || 0) >= MIN_DURATION_SECONDS;
+
+/**
+ * Is this call finished as far as the sync is concerned? A missed call that was
+ * labeled before missed-call recordings were checked gets one more look.
+ */
+function isFinal(rec, call) {
+    if (!rec || !FINAL_STATUSES.has(rec.status)) return false;
+    if (rec.status === "labeled" && rec.kind === "missed" && !rec.recordingChecked && call && mayHaveMessage(call)) return false;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Zatanna
 // ---------------------------------------------------------------------------
@@ -205,7 +218,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
 
         for (const call of calls) {
             const rec = records.get(`${office}_${call.callId}`);
-            if (rec && (FINAL_STATUSES.has(rec.status) || (rec.status === "error" && (rec.attempts || 0) >= MAX_ATTEMPTS))) continue;
+            if (isFinal(rec, call) || (rec?.status === "error" && (rec.attempts || 0) >= MAX_ATTEMPTS)) continue;
             if (rec?.status === "processing" && (rec.leaseUntil || 0) > now) { pending++; continue; } // another run has it
 
             const endMs = call.endedAt ? Date.parse(call.endedAt) : Date.parse(call.startedAt);
@@ -236,6 +249,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             const kind = callKind(call);
             if (kind === "missed") {
                 stats.missed++;
+                if (mayHaveMessage(call)) stats.minutes += (call.durationSeconds || 0) / 60;
             } else {
                 stats.eligible++;
                 stats.minutes += (call.durationSeconds || 0) / 60;
@@ -250,12 +264,12 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
      * scheduled one) never process it at the same time. Returns false if it is
      * already finished or another run holds an unexpired claim.
      */
-    async function claim(office, callId) {
+    async function claim(office, callId, call) {
         const ref = syncCol.doc(`${office}_${callId}`);
         return db.runTransaction(async (t) => {
             const snap = await t.get(ref);
             const d = snap.exists ? snap.data() : null;
-            if (d && FINAL_STATUSES.has(d.status)) return false;
+            if (isFinal(d, call)) return false;
             if (d && d.status === "processing" && (d.leaseUntil || 0) > Date.now()) return false;
             t.set(ref, { office, mangoCallId: callId, status: "processing", leaseUntil: Date.now() + CLAIM_LEASE_MS, updatedAt: ts() }, { merge: true });
             return true;
@@ -282,16 +296,19 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             update.priority = "TODAY";
         }
         await callsCol.doc(hub.id).set(update, { merge: true });
-        await mark(office, call.callId, { status: "labeled", hubCallId: hub.id, kind: update.callKind });
+        await mark(office, call.callId, { status: "labeled", hubCallId: hub.id, kind: update.callKind, recordingChecked: true });
         return "labeled";
     }
 
     /** Fetch a fresh recording URL and run the transcription pipeline for one item. */
     async function processItem(item, { apiKey, openAiKey, isBackfill, maxFetchAttempts = 2 }) {
-        if (!(await claim(item.office, item.call.callId))) return "skipped";
-        if (item.kind === "missed") return labelMissed(item, { isBackfill });
+        if (!(await claim(item.office, item.call.callId, item.call))) return "skipped";
+        if (item.kind === "missed" && !mayHaveMessage(item.call)) return labelMissed(item, { isBackfill });
         const { office, call, hub } = item;
         const full = await mango(apiKey, MANGO_SESSIONS[office], "getCall", { callId: call.callId });
+        // A missed call (e.g. forwarded to the after-hours answering service) with
+        // no recording just needs a callback label.
+        if (item.kind === "missed" && !full?.recordingUrl) return labelMissed(item, { isBackfill });
         if (!full?.recordingUrl) {
             // Mango may still be finishing the recording of a call that just ended.
             const endMs = Date.parse(call.endedAt || call.startedAt);
@@ -306,6 +323,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             mangoCallId: call.callId,
             recordingSource: "zatanna-mango",
             ...(item.kind === "voicemail" ? { callKind: "voicemail" } : {}),
+            ...(item.kind === "missed" ? { callKind: "missed", forwarded: !!call.externallyTransferredAt } : {}),
         }, { merge: true });
         const d = hub.data;
         const analysis = await processAudioAndAnalyze(
@@ -313,7 +331,11 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             { autoResolve: !isBackfill, keepStatus: true, maxFetchAttempts },
         );
         if (analysis) {
-            await mark(office, call.callId, { status: "done", hubCallId: hub.id, backfill: isBackfill });
+            // A live missed call is a callback: make sure it's at least TODAY.
+            if (item.kind === "missed" && !isBackfill && (analysis.priority || "NORMAL") === "NORMAL" && !STAFF_STATUSES.includes(d.status)) {
+                await callsCol.doc(hub.id).set({ priority: "TODAY" }, { merge: true });
+            }
+            await mark(office, call.callId, { status: "done", hubCallId: hub.id, backfill: isBackfill, kind: item.kind });
             return "done";
         }
         await mark(office, call.callId, { status: "error", hubCallId: hub.id, attempts: item.attempts + 1 });
