@@ -28,8 +28,8 @@ const ZATANNA_API_BASE = process.env.ZATANNA_API_BASE || "https://api.zatanna.ai
 // Override with ZATANNA_SESSION_GLENDALE / ZATANNA_SESSION_LITCHFIELD if an
 // office is ever reconnected and gets a new session id.
 const ZATANNA_SESSIONS = {
-    glendale: process.env.ZATANNA_SESSION_GLENDALE || "dd4763ea-af62-5994-846c-da3d8008e970",
-    litchfield: process.env.ZATANNA_SESSION_LITCHFIELD || "f4216731-2b36-5ce9-83a1-6efdc9b8b501",
+    glendale: process.env.ZATANNA_SESSION_GLENDALE || "98e5e457-facc-56f0-9b04-12710e2c1cf1",
+    litchfield: process.env.ZATANNA_SESSION_LITCHFIELD || "4f9416cd-535e-547a-97fb-fc9c77ebaeca",
 };
 
 const REQUEST_TIMEOUT_MS = 20000;
