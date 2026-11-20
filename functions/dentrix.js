@@ -132,6 +132,20 @@ async function nextAppointmentFor(apiKey, sessionId, contactId) {
 }
 
 /**
+ * A patient's best phone number (primary, else mobile, else first). Note that
+ * getContact returns the whole chart; only the number is kept.
+ */
+async function lookupPatientPhone(apiKey, sessionId, patientId) {
+    const data = await zatanna(apiKey, sessionId, "getContact", { contact: patientId });
+    const c = data.contact || data;
+    return c.primary_phone_number
+        || c.phone_numbers?.find((p) => p.type === "MOBILE")?.number
+        || c.phone_numbers?.[0]?.number
+        || c.additional_data?.phone
+        || null;
+}
+
+/**
  * Look up a phone number in one office's Dentrix. Returns the object stored on
  * the call doc as `dentrix`. Never throws — failures come back as status "error".
  */
@@ -193,6 +207,7 @@ module.exports = {
     ZATANNA_SESSIONS,
     zatanna,
     unwrapZatanna,
+    lookupPatientPhone,
     enrichCallWithDentrix,
     lookupPatientByPhone,
     normalizePhone,

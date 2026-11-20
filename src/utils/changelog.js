@@ -4,6 +4,14 @@
 // automatically for anyone who hasn't seen the newest date yet.
 export const CHANGELOG = [
   {
+    date: '2026-11-21',
+    items: [
+      'New "Morning Huddle" page: everyone on today\'s or tomorrow\'s schedule with what to know before they arrive — unconfirmed, new patients, balances due, insurance that needs verifying, unscheduled treatment (a chance to do more while they\'re here), lab cases that aren\'t back yet, and premeds. Tap a tile to see just those patients. It\'s built at 5:30am and 12:30pm; use "Refresh now" any time.',
+      'New "Treatment Follow-up" page: patients with treatment planned in Dentrix that isn\'t booked yet, biggest dollar amount first, with phone numbers. Book it in Dentrix as usual and they drop off the list on their own. The list fills in over the coming nights as the hub works back through past visits.',
+      'Call cards on phones: the buttons now always show and wrap neatly instead of running off the screen.',
+    ],
+  },
+  {
     date: '2026-11-20',
     items: [
       'AI transcripts are back: the hub now pulls call recordings from our phone system automatically again, so new calls get their summary, priority, sentiment, and transcript a few minutes after they end — no more "Add Recording" needed.',

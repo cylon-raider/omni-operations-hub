@@ -28,6 +28,8 @@ const APP_ID = "fds-operations-hub";
 // processAudioAndAnalyze is a hoisted function declaration further down.
 const mangoSync = require("./mango").createMangoSync({ db, appId: APP_ID, processAudioAndAnalyze });
 const confirmationsSync = require("./confirmations").createConfirmationsSync({ db, appId: APP_ID });
+const huddleSync = require("./huddle").createHuddleSync({ db, appId: APP_ID });
+const treatmentSync = require("./treatment").createTreatmentSync({ db, appId: APP_ID });
 
 // Call recordings are cached here on first fetch so a later retry (e.g.
 // after an OpenAI outage/billing lapse) doesn't depend on Mango's recording
@@ -875,6 +877,77 @@ exports.refreshConfirmations = onRequest({ timeoutSeconds: 120, memory: "512MiB"
         console.error("refreshConfirmations error:", e);
         return res.status(500).json({ ok: false, error: e.message });
     }
+});
+
+/**
+ * ----------------------------------------------------------------------------
+ * Morning huddle (functions/huddle.js)
+ * ----------------------------------------------------------------------------
+ * 5:30am and 12:30pm: build today's and tomorrow's huddle for both offices.
+ */
+exports.buildHuddle = onSchedule({
+    schedule: "30 5,12 * * *",
+    timeZone: "America/Phoenix",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    secrets: [ZATANNA_API_KEY],
+}, async () => {
+    const apiKey = ZATANNA_API_KEY.value();
+    if (!apiKey) return console.error("[huddle] ZATANNA_API_KEY not configured; skipping.");
+    await huddleSync.run(apiKey);
+});
+
+// "Refresh now" on the huddle page (signed-in users; throttled per office+day).
+exports.refreshHuddle = onRequest({ timeoutSeconds: 300, memory: "1GiB", invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.set("Access-Control-Max-Age", "3600");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+    try {
+        const idToken = (req.get("Authorization") || "").replace(/^Bearer /, "");
+        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
+        try {
+            await admin.auth().verifyIdToken(idToken);
+        } catch {
+            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
+        }
+        const office = String(req.query.office || "").toLowerCase();
+        if (!["glendale", "litchfield"].includes(office)) return res.status(400).json({ ok: false, error: "Unknown office." });
+        const offset = req.query.day === "tomorrow" ? 1 : 0;
+        const { clinicDate, addDays } = require("./treatment");
+        const date = addDays(clinicDate(Date.now()), offset);
+
+        const docRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("huddles").doc(`${office}_${date}`);
+        const last = (await docRef.get()).data()?.generatedAt?.toMillis?.() ?? 0;
+        if (Date.now() - last < 2 * 60e3) return res.status(200).json({ ok: true, throttled: true });
+
+        const result = await huddleSync.buildDay(ZATANNA_API_KEY.value(), office, date, { deadline: Date.now() + 250e3 });
+        return res.status(200).json({ ok: true, ...result });
+    } catch (e) {
+        console.error("refreshHuddle error:", e);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * ----------------------------------------------------------------------------
+ * Unscheduled treatment follow-up list (functions/treatment.js)
+ * ----------------------------------------------------------------------------
+ * Evenings: check today's patients, re-check rows older than a week, then keep
+ * working backwards through past visits (TREATMENT_BACKFILL_DAYS, default 180).
+ */
+exports.syncTreatmentFollowUp = onSchedule({
+    schedule: "0 20,22 * * *",
+    timeZone: "America/Phoenix",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    secrets: [ZATANNA_API_KEY],
+}, async () => {
+    const apiKey = ZATANNA_API_KEY.value();
+    if (!apiKey) return console.error("[treatment] ZATANNA_API_KEY not configured; skipping.");
+    await treatmentSync.run(apiKey, { backfillDays: parseInt(process.env.TREATMENT_BACKFILL_DAYS, 10) || 180 });
 });
 
 exports.debugDb = require('./debug').debugDb;
