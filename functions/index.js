@@ -266,6 +266,17 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secre
             console.log(`Processed call ${callId} (recording: ${!!recordingUrl})`);
         }
 
+        // Mango no longer sends recordings, but every call still triggers this
+        // webhook — use it to fetch the recording through Zatanna right away
+        // instead of waiting for the 5-minute syncMangoRecordings run.
+        const touchedOffices = [...new Set(processedEvents
+            .filter((e) => (e.payload || e).direction !== "internal")
+            .map((e) => (e.payload || e).location || (req.query.location || "glendale").toLowerCase()))];
+        if (touchedOffices.length && OPENAI_API_KEY && ZATANNA_API_KEY.value()) {
+            await mangoSync.syncNow({ apiKey: ZATANNA_API_KEY.value(), openAiKey: OPENAI_API_KEY, offices: touchedOffices })
+                .catch((err) => console.warn("[mango-sync] immediate sync failed:", err.message));
+        }
+
         // 3. Relay payload to Google Sheet if Webhook URL is set
         if (GOOGLE_SHEET_WEBHOOK_URL && processedEvents.length > 0) {
             try {

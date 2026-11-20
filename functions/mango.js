@@ -45,6 +45,10 @@ const BACKFILL_WINDOW_MS = 6 * 3600e3;
 const MATCH_BEFORE_MS = 10 * 60e3;      // hub createdAt may be at call start or end:
 const MATCH_AFTER_MS = 40 * 60e3;       // allow [start - 10m, end + 40m]
 const MAX_ATTEMPTS = 3;
+const CLAIM_LEASE_MS = 8 * 60e3;        // a claimed call is left alone by other runs this long
+const RECORDING_WAIT_MS = 30 * 60e3;    // keep retrying a call with no recording yet this long
+const WEBHOOK_LOOKBACK_MS = 30 * 60e3;  // webhook-triggered sync looks at the last 30 minutes
+const WEBHOOK_SETTLE_MS = 10e3;
 const STAFF_STATUSES = ["In Progress", "Resolved"]; // never reset what staff set by hand
 const REQUEST_TIMEOUT_MS = 30000;
 
@@ -185,7 +189,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
      * { items, pending, stats }: `items` need a recording fetched + transcribed,
      * `pending` counts calls that may still change (retry next run).
      */
-    async function triage(office, calls, { now, giveUpUnmatched, countOnly }) {
+    async function triage(office, calls, { now, giveUpUnmatched, countOnly, settleMs = SETTLE_MS }) {
         const stats = { listed: calls.length, eligible: 0, minutes: 0, hasTranscript: 0, unmatched: 0, ineligible: 0, missed: 0 };
         const items = [];
         let pending = 0;
@@ -198,10 +202,11 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         for (const call of calls) {
             const rec = records.get(`${office}_${call.callId}`);
             if (rec && (FINAL_STATUSES.has(rec.status) || (rec.status === "error" && (rec.attempts || 0) >= MAX_ATTEMPTS))) continue;
+            if (rec?.status === "processing" && (rec.leaseUntil || 0) > now) { pending++; continue; } // another run has it
 
             const endMs = call.endedAt ? Date.parse(call.endedAt) : Date.parse(call.startedAt);
             if (call.status !== "completed" && now - endMs < UNMATCHED_GIVE_UP_MS) { pending++; continue; }
-            if (now - endMs < SETTLE_MS) { pending++; continue; }
+            if (now - endMs < settleMs) { pending++; continue; }
 
             const reason = ineligibleReason(call);
             if (reason) {
@@ -236,6 +241,23 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         return { items, pending, stats };
     }
 
+    /**
+     * Atomically claim a call so two runs (a webhook-triggered sync and the
+     * scheduled one) never process it at the same time. Returns false if it is
+     * already finished or another run holds an unexpired claim.
+     */
+    async function claim(office, callId) {
+        const ref = syncCol.doc(`${office}_${callId}`);
+        return db.runTransaction(async (t) => {
+            const snap = await t.get(ref);
+            const d = snap.exists ? snap.data() : null;
+            if (d && FINAL_STATUSES.has(d.status)) return false;
+            if (d && d.status === "processing" && (d.leaseUntil || 0) > Date.now()) return false;
+            t.set(ref, { office, mangoCallId: callId, status: "processing", leaseUntil: Date.now() + CLAIM_LEASE_MS, updatedAt: ts() }, { merge: true });
+            return true;
+        });
+    }
+
     /** A missed call with no voicemail: nothing to transcribe, so label it as a callback. */
     async function labelMissed(item, { isBackfill }) {
         const { office, call, hub } = item;
@@ -261,11 +283,18 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
     }
 
     /** Fetch a fresh recording URL and run the transcription pipeline for one item. */
-    async function processItem(item, { apiKey, openAiKey, isBackfill }) {
+    async function processItem(item, { apiKey, openAiKey, isBackfill, maxFetchAttempts = 2 }) {
+        if (!(await claim(item.office, item.call.callId))) return "skipped";
         if (item.kind === "missed") return labelMissed(item, { isBackfill });
         const { office, call, hub } = item;
         const full = await mango(apiKey, MANGO_SESSIONS[office], "getCall", { callId: call.callId });
         if (!full?.recordingUrl) {
+            // Mango may still be finishing the recording of a call that just ended.
+            const endMs = Date.parse(call.endedAt || call.startedAt);
+            if (Date.now() - endMs < RECORDING_WAIT_MS) {
+                await mark(office, call.callId, { status: "awaiting_recording", hubCallId: hub.id, leaseUntil: 0 });
+                return "awaiting_recording";
+            }
             await mark(office, call.callId, { status: "no_recording", hubCallId: hub.id });
             return "no_recording";
         }
@@ -277,7 +306,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         const d = hub.data;
         const analysis = await processAudioAndAnalyze(
             hub.id, full.recordingUrl, openAiKey, null, d.toNumber || "", office, d.direction || call.direction,
-            { autoResolve: !isBackfill, keepStatus: true, maxFetchAttempts: 2 },
+            { autoResolve: !isBackfill, keepStatus: true, maxFetchAttempts },
         );
         if (analysis) {
             await mark(office, call.callId, { status: "done", hubCallId: hub.id, backfill: isBackfill });
@@ -404,29 +433,61 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             }
         }
 
-        // Transcribe, a few at a time, stopping new work ~90s before the deadline.
-        const results = { done: 0, labeled: 0, error: 0, no_recording: 0 };
         const work = queue.slice(0, maxItems);
-        let next = 0;
-        async function worker() {
-            while (next < work.length && Date.now() < deadline - 90e3) {
-                const item = work[next++];
-                try {
-                    results[await processItem(item, { apiKey, openAiKey, isBackfill: item.isBackfill })]++;
-                } catch (err) {
-                    results.error++;
-                    console.warn(`[mango-sync] ${item.office} call ${item.call.callId} failed:`, err.message);
-                    await mark(item.office, item.call.callId, { status: "error", hubCallId: item.hub.id, attempts: item.attempts + 1 }).catch(() => {});
-                }
-            }
-        }
-        await Promise.all([worker(), worker(), worker()]);
+        const results = await processQueue(work, { apiKey, openAiKey, deadline });
         console.log(`[mango-sync] run finished in ${Math.round((Date.now() - started) / 1000)}s:`,
             JSON.stringify({ queued: work.length, ...results, mode }));
         return { queued: work.length, ...results };
     }
 
-    return { run, triage, processItem };
+    /** Transcribe / label items a few at a time, stopping new work ~90s before the deadline. */
+    async function processQueue(work, { apiKey, openAiKey, deadline, maxFetchAttempts }) {
+        const results = { done: 0, labeled: 0, error: 0, no_recording: 0, awaiting_recording: 0, skipped: 0 };
+        let next = 0;
+        async function worker() {
+            while (next < work.length && Date.now() < deadline - 90e3) {
+                const item = work[next++];
+                try {
+                    results[await processItem(item, { apiKey, openAiKey, isBackfill: !!item.isBackfill, maxFetchAttempts })]++;
+                } catch (err) {
+                    results.error++;
+                    console.warn(`[mango-sync] ${item.office} call ${item.call.callId} failed:`, err.message);
+                    await mark(item.office, item.call.callId, { status: "error", hubCallId: item.hub.id, attempts: item.attempts + 1, leaseUntil: 0 }).catch(() => {});
+                }
+            }
+        }
+        await Promise.all([worker(), worker(), worker()]);
+        return results;
+    }
+
+    /**
+     * Immediate sync for the offices a Mango webhook just reported a call for:
+     * look at the last 30 minutes and process anything finished, right away.
+     * Waits longer for a fresh recording to appear. The 5-minute schedule
+     * still catches anything this misses (not finished yet, Zatanna hiccup).
+     */
+    async function syncNow({ apiKey, openAiKey, offices, budgetMs = 4 * 60e3 }) {
+        const started = Date.now();
+        const work = [];
+        for (const office of offices) {
+            if (!MANGO_SESSIONS[office]) continue;
+            try {
+                const calls = await listCallsBetween(apiKey, MANGO_SESSIONS[office], started - WEBHOOK_LOOKBACK_MS, started);
+                await resolveReturnedCalls(office, calls);
+                const { items } = await triage(office, calls, { now: started, giveUpUnmatched: false, countOnly: false, settleMs: WEBHOOK_SETTLE_MS });
+                work.push(...items);
+            } catch (err) {
+                console.warn(`[mango-sync] immediate ${office} failed:`, err.message);
+            }
+        }
+        if (!work.length) return { queued: 0 };
+        const results = await processQueue(work, { apiKey, openAiKey, deadline: started + budgetMs, maxFetchAttempts: 6 });
+        console.log(`[mango-sync] immediate sync (${offices.join(",")}) in ${Math.round((Date.now() - started) / 1000)}s:`,
+            JSON.stringify({ queued: work.length, ...results }));
+        return { queued: work.length, ...results };
+    }
+
+    return { run, syncNow, triage, processItem };
 }
 
 module.exports = {
