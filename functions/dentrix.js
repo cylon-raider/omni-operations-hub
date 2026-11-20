@@ -52,6 +52,39 @@ function externalNumberFor({ direction, fromNumber, toNumber }) {
     return direction === "outbound" ? toNumber : fromNumber;
 }
 
+/**
+ * Pull the payload out of a Zatanna response. Zatanna's REST API wraps results
+ * differently from what its docs/MCP show, and not the same way for every
+ * integration, so accept every documented envelope (possibly nested):
+ *   { kind: "success", data }      { result: { ok: true, value } }      { ok: true, value }
+ * Returns { ok: true, data } or { ok: false, reason, stepUp }.
+ */
+function unwrapZatanna(json) {
+    let node = json;
+    for (let depth = 0; depth < 4 && node && typeof node === "object"; depth++) {
+        if (node.kind === "success") {
+            node = node.data ?? {};
+            continue;
+        }
+        if (node.result && typeof node.result === "object") {
+            node = node.result;
+            continue;
+        }
+        if (node.ok === true && "value" in node) {
+            node = node.value ?? {};
+            continue;
+        }
+        if (node.ok === false || (node.kind && node.kind !== "success")) {
+            const stepUp = node.state === "step_up_required";
+            const reason = node.error?.message || (typeof node.error === "string" ? node.error : null) || node.state || node.kind || "unknown error";
+            return { ok: false, reason, stepUp };
+        }
+        break;
+    }
+    if (!node || typeof node !== "object") return { ok: false, reason: "empty response" };
+    return { ok: true, data: node };
+}
+
 async function zatanna(apiKey, sessionId, operation, body) {
     const res = await fetch(`${ZATANNA_API_BASE}/${encodeURIComponent(sessionId)}/execute/${operation}`, {
         method: "POST",
@@ -63,16 +96,19 @@ async function zatanna(apiKey, sessionId, operation, body) {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const json = await res.json().catch(() => null);
-    // 202 = Dentrix asked for a verification code and the call is paused
-    // waiting for a human to answer it in Zatanna — treat as a failed lookup.
-    if (res.status === 202) {
-        throw new Error("Dentrix login needs a verification code — check the Zatanna dashboard.");
+    const out = res.ok && json ? unwrapZatanna(json) : null;
+    // 202 / step_up_required = the vendor asked for a verification code and the
+    // call is paused waiting for a human to answer it in Zatanna.
+    if (res.status === 202 || out?.stepUp) {
+        throw new Error("Login needs a verification code — check the Zatanna dashboard.");
     }
-    if (!res.ok || !json || json.kind !== "success") {
-        const msg = json?.error?.message || json?.error || json?.kind || res.statusText;
-        throw new Error(`Zatanna ${operation} failed (${res.status}): ${String(msg).slice(0, 200)}`);
+    if (!out || !out.ok) {
+        const msg = out?.reason || json?.error?.message || json?.error || res.statusText;
+        // Shape hint (keys only, never values) so an unexpected envelope is diagnosable from logs.
+        const shape = json && typeof json === "object" ? ` [response keys: ${Object.keys(json).join(",")}]` : "";
+        throw new Error(`Zatanna ${operation} failed (${res.status}): ${String(msg).slice(0, 200)}${shape}`);
     }
-    return json.data || {};
+    return out.data;
 }
 
 /** Earliest upcoming appointment that isn't cancelled / broken, or null. */
@@ -156,6 +192,7 @@ module.exports = {
     ZATANNA_API_KEY,
     ZATANNA_SESSIONS,
     zatanna,
+    unwrapZatanna,
     enrichCallWithDentrix,
     lookupPatientByPhone,
     normalizePhone,

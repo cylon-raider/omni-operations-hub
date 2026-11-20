@@ -22,7 +22,7 @@
 // transcribed twice and a run can stop anywhere and resume.
 // -----------------------------------------------------------------------------
 const admin = require("firebase-admin");
-const { normalizePhone } = require("./dentrix");
+const { normalizePhone, unwrapZatanna } = require("./dentrix");
 
 const ZATANNA_API_BASE = process.env.ZATANNA_API_BASE || "https://api.zatanna.ai/v1/integrations";
 
@@ -62,13 +62,13 @@ async function mango(apiKey, sessionId, operation, body) {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const json = await res.json().catch(() => null);
-    // Mango operations answer { result: { ok, value } }; accept a bare { ok, value } too.
-    const result = json?.result ?? json;
-    if (!res.ok || !result || result.ok !== true) {
-        const why = result?.state || json?.error?.message || res.statusText;
-        throw new Error(`Zatanna mangovoice.${operation} failed (${res.status}): ${String(why).slice(0, 200)}`);
+    const out = res.ok && json ? unwrapZatanna(json) : null;
+    if (!out || !out.ok) {
+        const why = out?.reason || json?.error?.message || res.statusText;
+        const shape = json && typeof json === "object" ? ` [response keys: ${Object.keys(json).join(",")}]` : "";
+        throw new Error(`Zatanna mangovoice.${operation} failed (${res.status}): ${String(why).slice(0, 200)}${shape}`);
     }
-    return result.value;
+    return out.data;
 }
 
 /** Every call that started inside [after, before), all pages. */
