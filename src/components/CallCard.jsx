@@ -49,6 +49,12 @@ const QUEUES = [
 
 const PRIORITIES = ['NORMAL', 'TODAY', 'URGENT', 'ESCALATED'];
 
+// Set by the Mango sync (functions/mango.js) for calls nobody answered.
+const CALL_KIND_BADGES = {
+  missed: { label: 'Missed call', style: 'bg-red-100 text-red-700' },
+  voicemail: { label: 'Voicemail', style: 'bg-amber-100 text-amber-800' },
+};
+
 // A helper function to turn timestamps into human-readable text (e.g. "5m ago")
 function timeAgo(timestamp) {
   if (!timestamp) return '';
@@ -237,6 +243,11 @@ export default function CallCard({ call, onUpdate, onResolve, onDelete, user, of
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-black text-gray-900 text-sm">{displayName}</span>
+            {CALL_KIND_BADGES[call.callKind] && (
+              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${CALL_KIND_BADGES[call.callKind].style}`}>
+                {CALL_KIND_BADGES[call.callKind].label}
+              </span>
+            )}
             {call.reason && (
               <span className="text-[10px] font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
                 {call.reason}

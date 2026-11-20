@@ -86,9 +86,27 @@ This module lives at the same `/financials` route and shares the same Firebase A
 1. **`functions/dentrix.js`** looks up the *other party's* phone number (the caller on inbound calls, the number dialed on outbound) in that office's Dentrix Ascend, and stores a minimal `dentrix` field on the call doc: match status (`matched` / `multiple` / `none` / `skipped` / `error`), and for up to 3 patients their name, chart number, state, and next non-cancelled appointment. No birth dates, addresses, insurance, or SSNs are stored.
 2. Dentrix is reached through **Zatanna** (`api.zatanna.ai`), which keeps a logged-in Dentrix Ascend session per office (session ids for Glendale/Litchfield are in `dentrix.js`). Only read-only operations are called (`searchContacts`, `listFutureAppointments`). The API key is the `ZATANNA_API_KEY` secret in Secret Manager, never in the repo.
 3. **`mangoWebhook`** runs the lookup alongside the AI transcription step for every non-internal call, so it never delays the call appearing. **`lookupDentrix`** (signed-in users only) re-runs it for one call; `CallCard.jsx` shows a "Find in Dentrix" button for calls with no lookup yet or a failed one.
-4. Note: Zatanna's Dentrix integration has **no call-recording or transcript operations** — Dentrix never held the audio — so it does not replace Mango as a recording source.
+4. Note: Zatanna's Dentrix integration has **no call-recording or transcript operations** — Dentrix never held the audio. Recordings come from Zatanna's separate Mango Voice integration (Section 7).
 
-## 7. Understanding the Source Code
+## 7. Mango Recordings via Zatanna
+
+Since 2026-10-13 Mango's webhook stopped including `recording_url`. Zatanna also keeps a logged-in **Mango Voice** session per office, and its `getCall` returns a signed recording URL (valid ~1 hour).
+
+1. **`syncMangoRecordings`** (scheduled, every 5 minutes) runs **`functions/mango.js`**: list each office's recent Mango calls, skip ineligible ones (missed, internal, under 25s), **match** each to the call doc the webhook already created (same office + outside party's phone number + `createdAt` within [start − 10m, end + 40m]), fetch a fresh recording URL, and run the normal `processAudioAndAnalyze` pipeline.
+2. Recovered transcripts use `keepStatus` (a call staff already marked In Progress/Resolved keeps that status) and set `recordingSource: "zatanna-mango"` + `mangoCallId` on the call doc.
+3. Progress lives in admin-only Firestore collections: `mango_sync_calls/{office}_{mangoCallId}` (done / has_transcript / ineligible / unmatched / no_recording / error + attempts), and `mango_sync_state` (backfill cursors + a run lease so overlapping runs never double-process).
+4. **Backfill** of the outage backlog is controlled by `MANGO_BACKFILL` in `functions/.env`: `off` (default), `count` (tallies eligible calls + minutes into the logs, no OpenAI spend), or `run` (transcribes ~30 calls per run, oldest first, with outbound auto-resolve disabled). `MANGO_BACKFILL_SINCE` sets the start (default 2026-10-13).
+
+5. **Missed calls & voicemails.** The same sync classifies each Mango call (`callKind`): a **voicemail** (`voicemailId` set) is transcribed like any call and tagged `callKind: "voicemail"`; a **missed** call with no message is labeled a callback (`callKind: "missed"`, reason "Missed call", priority bumped to TODAY on live calls) or `"hangup"` if under 5 seconds. `CallCard.jsx` shows red/amber badges for these.
+6. **Returned calls.** In the ongoing pass, an outbound call that connected for 20s+ to a number resolves that office's open missed/voicemail calls from the same number within the last 7 days (`resolvedBy: "Returned call (<phone station>)"`). The backfill never does this.
+
+## 8. Appointment Confirmations Board
+
+1. **`syncConfirmations`** (scheduled every 15 min, 6am–6pm Phoenix) runs **`functions/confirmations.js`**: read today + the next 3 days of appointments from Dentrix (`listAppointments`, enhanced mode, read-only) and keep the **unconfirmed** ones in `artifacts/{appId}/public/data/confirmations/{office}_{appointmentId}` — patient name, time, provider, operatory, description, phone (one `getContact` per new row), reminder texts sent. No notes, procedures or other clinical detail are stored.
+2. Each sync flips rows to `confirmed` when Dentrix shows them confirmed, and flags `gone` for appointments that were cancelled, broken or moved; rows older than 14 days are deleted. Appointments already confirmed when first seen are never stored.
+3. **`src/pages/Confirmations.jsx`** (`/confirmations`, via `src/hooks/useConfirmations.js`) shows the list per day. Staff confirm **in Dentrix** — the hub never writes to Dentrix — and can only record `outreach` (left message / no answer / will call back / wrong number) on a row; `firestore.rules` enforces that. **`refreshConfirmations`** backs the "Refresh now" button (signed-in users, throttled to once a minute per office).
+
+## 9. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 

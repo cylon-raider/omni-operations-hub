@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Receipt, DollarSign, Stethoscope,
+  LayoutDashboard, Receipt, CalendarCheck, DollarSign, Stethoscope,
   FileText, Activity, LogOut, X,
 } from 'lucide-react';
 import ThemeSelector from './ThemeSelector';
@@ -9,6 +9,7 @@ import WhatsNewPanel from './WhatsNewPanel';
 
 const mainLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Live Dispatch', size: 'main' },
+  { to: '/confirmations', icon: CalendarCheck, label: 'Confirmations', size: 'main' },
   { to: '/financials', icon: Receipt, label: 'Financials & Payroll', size: 'main', isNew: true },
 ];
 

@@ -59,6 +59,10 @@ npm install
 # The Dentrix patient lookup reads its Zatanna API key from Secret Manager
 # (not .env). Set it once before deploying functions:
 #   firebase functions:secrets:set ZATANNA_API_KEY
+# (the key needs the dentrix-ascend and mangovoice integrations enabled)
+#
+# Optional, to transcribe the backlog since the Oct 13 recording outage:
+# MANGO_BACKFILL=count   # tally only (see firebase functions:log), then "run"
 ```
 
 ### 4. Deployment
