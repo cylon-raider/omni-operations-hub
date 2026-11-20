@@ -6,6 +6,7 @@
 // saves it to our database, and even uses AI to transcribe and summarize the call!
 // -----------------------------------------------------------------------------
 const { onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
@@ -23,6 +24,9 @@ const db = admin.firestore();
 
 // The specific database path we write to
 const APP_ID = "fds-operations-hub";
+
+// processAudioAndAnalyze is a hoisted function declaration further down.
+const mangoSync = require("./mango").createMangoSync({ db, appId: APP_ID, processAudioAndAnalyze });
 
 // Call recordings are cached here on first fetch so a later retry (e.g.
 // after an OpenAI outage/billing lapse) doesn't depend on Mango's recording
@@ -288,13 +292,34 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secre
  * Process call recording with OpenAI Whisper (transcription) & GPT-4o (analysis).
  * Uses Node.js-compatible APIs (Buffer, form-data package).
  */
-async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToken, toNumber, location, direction) {
+// Statuses staff set by hand. When `keepStatus` is on (recordings recovered
+// later via Zatanna), a transcript arriving must not reopen a call someone has
+// already started or resolved.
+const STAFF_STATUSES = ["In Progress", "Resolved"];
+
+/**
+ * options:
+ *   autoResolve       (default true)  outbound "resolved" calls close that patient's open inbound calls.
+ *                                     Off for the backfill so weeks-old calls aren't closed in bulk.
+ *   keepStatus        (default false) keep an In Progress / Resolved status instead of resetting to Waiting.
+ *   maxFetchAttempts  (default 12)    retries while the recording URL 403/404s (Mango's webhook URLs
+ *                                     need time to appear; Zatanna's signed URLs are ready immediately).
+ */
+async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToken, toNumber, location, direction, options = {}) {
+    const { autoResolve = true, keepStatus = false, maxFetchAttempts = 12 } = options;
     const callRef = db.collection("artifacts")
         .doc(APP_ID)
         .collection("public")
         .doc("data")
         .collection("calls")
         .doc(callId);
+
+    let previousStatus = null;
+    if (keepStatus) {
+        const snap = await callRef.get();
+        previousStatus = snap.exists ? snap.data().status : null;
+    }
+    const finalStatus = (fallback) => (keepStatus && STAFF_STATUSES.includes(previousStatus)) ? previousStatus : fallback;
 
     try {
         // Prefer a cached copy from a previous attempt over re-fetching from
@@ -311,10 +336,11 @@ async function processAudioAndAnalyze(callId, recordingUrl, openAiKey, mangoToke
             }
 
             let audioRes;
-            for (let attempt = 1; attempt <= 12; attempt++) {
+            for (let attempt = 1; attempt <= maxFetchAttempts; attempt++) {
                 audioRes = await fetch(recordingUrl, fetchOptions);
                 if (audioRes.ok) break;
                 if (audioRes.status !== 404 && audioRes.status !== 403) break;
+                if (attempt === maxFetchAttempts) break;
                 console.log(`[Call ${callId}] Attempt ${attempt}: Recording not ready (${audioRes.status}), waiting 10s...`);
                 await new Promise(r => setTimeout(r, 10000));
             }
@@ -453,12 +479,12 @@ Transcript: "${transcript}"
             patientName: analysis.patient_name || null,
             isOutbound: analysis.is_outbound || false,
             isResolved: analysis.is_resolved || false,
-            status: "Waiting",
+            status: finalStatus("Waiting"),
             processedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // If it's an outbound call that resolved the issue, auto-resolve any active inbound calls from that patient
-        if (direction === 'outbound' && analysis.is_outbound && analysis.is_resolved && toNumber) {
+        if (autoResolve && direction === 'outbound' && analysis.is_outbound && analysis.is_resolved && toNumber) {
             try {
                 const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
                 const q = callsRef.where("fromNumber", "==", toNumber)
@@ -488,7 +514,7 @@ Transcript: "${transcript}"
     } catch (err) {
         console.error(`Processing error for ${callId}:`, err.message);
         await callRef.update({
-            status: "Transcription Error",
+            status: finalStatus("Transcription Error"),
             errorLog: err.message,
             errorAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -720,6 +746,60 @@ exports.lookupDentrix = onRequest({ timeoutSeconds: 60, invoker: "public", secre
     } catch (e) {
         console.error("lookupDentrix error:", e);
         return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * ----------------------------------------------------------------------------
+ * Mango recordings via Zatanna (scheduled)
+ * ----------------------------------------------------------------------------
+ * Every 5 minutes: pull recent Mango calls through Zatanna, match each to the
+ * call doc the webhook created, and transcribe it with the same pipeline as
+ * before. Optionally also works through the backlog since the Oct 13 outage —
+ * set MANGO_BACKFILL in functions/.env to "count" (tally only, see logs) or
+ * "run" (transcribe), then redeploy. See functions/mango.js.
+ */
+exports.syncMangoRecordings = onSchedule({
+    schedule: "every 5 minutes",
+    timeZone: "America/Phoenix",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    secrets: [ZATANNA_API_KEY],
+}, async () => {
+    const apiKey = ZATANNA_API_KEY.value();
+    const openAiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey || !openAiKey) {
+        console.error("[mango-sync] missing ZATANNA_API_KEY or OPENAI_API_KEY; skipping.");
+        return;
+    }
+
+    // Lease so two overlapping runs never process the same calls.
+    const lockRef = db.collection("mango_sync_state").doc("lock");
+    const owner = randomUUID();
+    const leaseMs = 9.5 * 60e3;
+    const gotLock = await db.runTransaction(async (t) => {
+        const snap = await t.get(lockRef);
+        if (snap.exists && snap.data().expiresAt > Date.now()) return false;
+        t.set(lockRef, { owner, expiresAt: Date.now() + leaseMs });
+        return true;
+    });
+    if (!gotLock) {
+        console.log("[mango-sync] previous run still active; skipping.");
+        return;
+    }
+
+    try {
+        await mangoSync.run({
+            apiKey,
+            openAiKey,
+            mode: (process.env.MANGO_BACKFILL || "off").toLowerCase(),
+            sinceIso: process.env.MANGO_BACKFILL_SINCE || "2026-10-13T00:00:00-07:00",
+        });
+    } finally {
+        await db.runTransaction(async (t) => {
+            const snap = await t.get(lockRef);
+            if (snap.exists && snap.data().owner === owner) t.delete(lockRef);
+        }).catch(() => {});
     }
 });
 

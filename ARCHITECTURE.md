@@ -86,9 +86,18 @@ This module lives at the same `/financials` route and shares the same Firebase A
 1. **`functions/dentrix.js`** looks up the *other party's* phone number (the caller on inbound calls, the number dialed on outbound) in that office's Dentrix Ascend, and stores a minimal `dentrix` field on the call doc: match status (`matched` / `multiple` / `none` / `skipped` / `error`), and for up to 3 patients their name, chart number, state, and next non-cancelled appointment. No birth dates, addresses, insurance, or SSNs are stored.
 2. Dentrix is reached through **Zatanna** (`api.zatanna.ai`), which keeps a logged-in Dentrix Ascend session per office (session ids for Glendale/Litchfield are in `dentrix.js`). Only read-only operations are called (`searchContacts`, `listFutureAppointments`). The API key is the `ZATANNA_API_KEY` secret in Secret Manager, never in the repo.
 3. **`mangoWebhook`** runs the lookup alongside the AI transcription step for every non-internal call, so it never delays the call appearing. **`lookupDentrix`** (signed-in users only) re-runs it for one call; `CallCard.jsx` shows a "Find in Dentrix" button for calls with no lookup yet or a failed one.
-4. Note: Zatanna's Dentrix integration has **no call-recording or transcript operations** — Dentrix never held the audio — so it does not replace Mango as a recording source.
+4. Note: Zatanna's Dentrix integration has **no call-recording or transcript operations** — Dentrix never held the audio. Recordings come from Zatanna's separate Mango Voice integration (Section 7).
 
-## 7. Understanding the Source Code
+## 7. Mango Recordings via Zatanna
+
+Since 2026-10-13 Mango's webhook stopped including `recording_url`. Zatanna also keeps a logged-in **Mango Voice** session per office, and its `getCall` returns a signed recording URL (valid ~1 hour).
+
+1. **`syncMangoRecordings`** (scheduled, every 5 minutes) runs **`functions/mango.js`**: list each office's recent Mango calls, skip ineligible ones (missed, internal, under 25s), **match** each to the call doc the webhook already created (same office + outside party's phone number + `createdAt` within [start − 10m, end + 40m]), fetch a fresh recording URL, and run the normal `processAudioAndAnalyze` pipeline.
+2. Recovered transcripts use `keepStatus` (a call staff already marked In Progress/Resolved keeps that status) and set `recordingSource: "zatanna-mango"` + `mangoCallId` on the call doc.
+3. Progress lives in admin-only Firestore collections: `mango_sync_calls/{office}_{mangoCallId}` (done / has_transcript / ineligible / unmatched / no_recording / error + attempts), and `mango_sync_state` (backfill cursors + a run lease so overlapping runs never double-process).
+4. **Backfill** of the outage backlog is controlled by `MANGO_BACKFILL` in `functions/.env`: `off` (default), `count` (tallies eligible calls + minutes into the logs, no OpenAI spend), or `run` (transcribes ~30 calls per run, oldest first, with outbound auto-resolve disabled). `MANGO_BACKFILL_SINCE` sets the start (default 2026-10-13).
+
+## 8. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 

@@ -4,6 +4,13 @@
 // automatically for anyone who hasn't seen the newest date yet.
 export const CHANGELOG = [
   {
+    date: '2026-11-20',
+    items: [
+      'AI transcripts are back: the hub now pulls call recordings from our phone system automatically again, so new calls get their summary, priority, sentiment, and transcript a few minutes after they end — no more "Add Recording" needed.',
+      'Calls from the past few weeks that came in without a transcript are being filled in gradually in the background. A call you already resolved stays resolved when its transcript shows up.',
+    ],
+  },
+  {
     date: '2026-11-19',
     items: [
       'Calls now show who the caller is in Dentrix: the hub looks up the caller\'s phone number in that office\'s Dentrix Ascend and shows the patient\'s name, chart number, and their next appointment (with whether it\'s confirmed) right on the call card.',
