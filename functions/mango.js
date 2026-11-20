@@ -33,7 +33,11 @@ const MANGO_SESSIONS = {
     litchfield: process.env.MANGO_SESSION_LITCHFIELD || "1af473b2-a4c6-5aa0-92db-711ba64c03f9",
 };
 
-const MIN_DURATION_SECONDS = 25;        // same cutoff the webhook uses (voicemails, hang-ups)
+const MIN_DURATION_SECONDS = 25;        // answered calls: same cutoff the webhook uses
+const MIN_VOICEMAIL_SECONDS = 5;        // voicemails: even a short message matters
+const HANGUP_SECONDS = 5;               // missed calls shorter than this are hang-ups, not callbacks
+const RETURN_MIN_SECONDS = 20;          // an outbound call this long counts as returning a missed call
+const RETURN_LOOKBACK_MS = 7 * 24 * 3600e3;
 const ONGOING_LOOKBACK_MS = 3 * 3600e3; // ongoing pass covers the last 3 hours
 const SETTLE_MS = 2 * 60e3;             // let a call settle (webhook + recording) before touching it
 const UNMATCHED_GIVE_UP_MS = 30 * 60e3; // ongoing: stop retrying a match after 30 min
@@ -41,10 +45,11 @@ const BACKFILL_WINDOW_MS = 6 * 3600e3;
 const MATCH_BEFORE_MS = 10 * 60e3;      // hub createdAt may be at call start or end:
 const MATCH_AFTER_MS = 40 * 60e3;       // allow [start - 10m, end + 40m]
 const MAX_ATTEMPTS = 3;
+const STAFF_STATUSES = ["In Progress", "Resolved"]; // never reset what staff set by hand
 const REQUEST_TIMEOUT_MS = 30000;
 
 // Sync statuses that mean "never look at this call again".
-const FINAL_STATUSES = new Set(["done", "has_transcript", "no_recording", "unmatched", "ineligible"]);
+const FINAL_STATUSES = new Set(["done", "has_transcript", "labeled", "no_recording", "unmatched", "ineligible"]);
 
 // ---------------------------------------------------------------------------
 // Zatanna
@@ -87,12 +92,24 @@ async function listCallsBetween(apiKey, sessionId, afterMs, beforeMs) {
 // Pure helpers (unit-tested)
 // ---------------------------------------------------------------------------
 
-/** Should this Mango call get a transcript? Returns null if yes, or the reason it shouldn't. */
+/** "voicemail" (has a message to transcribe), "missed" (no message: needs a callback) or "answered". */
+function callKind(call) {
+    if (call.voicemailId) return "voicemail";
+    if (call.isMissed) return "missed";
+    return "answered";
+}
+
+/** Should the hub act on this Mango call? Returns null if yes, or the reason it shouldn't. */
 function ineligibleReason(call) {
     if (call.status && call.status !== "completed") return `status ${call.status}`;
     if (call.type && call.type !== "standard") return `type ${call.type}`;
-    if (call.isMissed) return "missed";
     if (call.direction !== "inbound" && call.direction !== "outbound") return `direction ${call.direction}`;
+    const kind = callKind(call);
+    if (kind !== "answered") {
+        if (call.direction !== "inbound") return "missed outbound"; // staff dialled, nobody answered
+        if (kind === "voicemail" && (call.durationSeconds || 0) < MIN_VOICEMAIL_SECONDS) return "short voicemail";
+        return null;
+    }
     if ((call.durationSeconds || 0) < MIN_DURATION_SECONDS) return "short";
     // Both ends are our own users/extensions -> an internal office call.
     if ((call.from?.userId || call.from?.extensionId) && (call.to?.userId || call.to?.extensionId)) return "internal";
@@ -169,7 +186,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
      * `pending` counts calls that may still change (retry next run).
      */
     async function triage(office, calls, { now, giveUpUnmatched, countOnly }) {
-        const stats = { listed: calls.length, eligible: 0, minutes: 0, hasTranscript: 0, unmatched: 0, ineligible: 0 };
+        const stats = { listed: calls.length, eligible: 0, minutes: 0, hasTranscript: 0, unmatched: 0, ineligible: 0, missed: 0 };
         const items = [];
         let pending = 0;
         if (!calls.length) return { items, pending, stats };
@@ -207,22 +224,56 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             }
             // Claim the hub doc so a neighbouring call can't match it too.
             hub.data.mangoCallId = call.callId;
-            stats.eligible++;
-            stats.minutes += (call.durationSeconds || 0) / 60;
-            items.push({ office, call, hub, attempts: rec?.attempts || 0 });
+            const kind = callKind(call);
+            if (kind === "missed") {
+                stats.missed++;
+            } else {
+                stats.eligible++;
+                stats.minutes += (call.durationSeconds || 0) / 60;
+            }
+            items.push({ office, call, hub, kind, attempts: rec?.attempts || 0 });
         }
         return { items, pending, stats };
     }
 
+    /** A missed call with no voicemail: nothing to transcribe, so label it as a callback. */
+    async function labelMissed(item, { isBackfill }) {
+        const { office, call, hub } = item;
+        const hangUp = (call.durationSeconds || 0) < HANGUP_SECONDS;
+        const forwarded = !!call.externallyTransferredAt;
+        const update = {
+            mangoCallId: call.callId,
+            callKind: hangUp ? "hangup" : "missed",
+            reason: hangUp ? "Hung up" : "Missed call",
+            summary: hangUp
+                ? "Caller hung up right away — no voicemail."
+                : forwarded
+                    ? "Missed call — forwarded outside the office, no voicemail left. Call back."
+                    : "Missed call — no voicemail left. Call back.",
+        };
+        // Live callbacks go to the top of the queue; don't reshuffle weeks-old calls.
+        if (!hangUp && !isBackfill && !STAFF_STATUSES.includes(hub.data.status) && (hub.data.priority || "NORMAL") === "NORMAL") {
+            update.priority = "TODAY";
+        }
+        await callsCol.doc(hub.id).set(update, { merge: true });
+        await mark(office, call.callId, { status: "labeled", hubCallId: hub.id, kind: update.callKind });
+        return "labeled";
+    }
+
     /** Fetch a fresh recording URL and run the transcription pipeline for one item. */
     async function processItem(item, { apiKey, openAiKey, isBackfill }) {
+        if (item.kind === "missed") return labelMissed(item, { isBackfill });
         const { office, call, hub } = item;
         const full = await mango(apiKey, MANGO_SESSIONS[office], "getCall", { callId: call.callId });
         if (!full?.recordingUrl) {
             await mark(office, call.callId, { status: "no_recording", hubCallId: hub.id });
             return "no_recording";
         }
-        await callsCol.doc(hub.id).set({ mangoCallId: call.callId, recordingSource: "zatanna-mango" }, { merge: true });
+        await callsCol.doc(hub.id).set({
+            mangoCallId: call.callId,
+            recordingSource: "zatanna-mango",
+            ...(item.kind === "voicemail" ? { callKind: "voicemail" } : {}),
+        }, { merge: true });
         const d = hub.data;
         const analysis = await processAudioAndAnalyze(
             hub.id, full.recordingUrl, openAiKey, null, d.toNumber || "", office, d.direction || call.direction,
@@ -236,12 +287,48 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         return "error";
     }
 
+    /**
+     * An outbound call that connected for a while counts as returning any open
+     * missed call / voicemail from that number at that office: resolve them.
+     * Ongoing pass only, so the backfill never closes old calls in bulk.
+     */
+    async function resolveReturnedCalls(office, calls) {
+        const outbound = calls.filter((c) => c.direction === "outbound" && !c.isMissed && c.status === "completed"
+            && (c.durationSeconds || 0) >= RETURN_MIN_SECONDS && externalNumber(c));
+        if (!outbound.length) return 0;
+        const records = await loadSyncRecords(office, outbound);
+        let resolved = 0;
+        for (const call of outbound) {
+            if (records.get(`${office}_${call.callId}`)?.returnChecked) continue;
+            const startMs = Date.parse(call.startedAt);
+            const snap = await callsCol.where("fromNumber", "==", `+1${externalNumber(call)}`).get();
+            for (const doc of snap.docs) {
+                const d = doc.data();
+                const created = d.createdAt?.toMillis?.() ?? 0;
+                if ((d.location || "glendale") !== office) continue;
+                if (d.callKind !== "missed" && d.callKind !== "voicemail") continue;
+                if (d.status === "Resolved" || created > startMs || created < startMs - RETURN_LOOKBACK_MS) continue;
+                await doc.ref.set({
+                    status: "Resolved",
+                    resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    resolvedBy: call.from?.userName ? `Returned call (${call.from.userName})` : "Returned call",
+                    returnedByMangoCallId: call.callId,
+                }, { merge: true });
+                resolved++;
+            }
+            await mark(office, call.callId, { returnChecked: true });
+        }
+        return resolved;
+    }
+
     /** Ongoing pass: recent calls for every office. */
     async function collectOngoing(apiKey, now) {
         const items = [];
         for (const office of Object.keys(MANGO_SESSIONS)) {
             try {
                 const calls = await listCallsBetween(apiKey, MANGO_SESSIONS[office], now - ONGOING_LOOKBACK_MS, now);
+                const returned = await resolveReturnedCalls(office, calls);
+                if (returned) console.log(`[mango-sync] ${office}: resolved ${returned} missed call(s) that were called back`);
                 const { items: found } = await triage(office, calls, { now, giveUpUnmatched: false, countOnly: false });
                 items.push(...found);
             } catch (err) {
@@ -260,7 +347,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         const stateRef = stateCol.doc(`${mode}_${office}`);
         const state = (await stateRef.get()).data() || {};
         let cursor = state.cursor ?? sinceMs;
-        const totals = state.totals || { listed: 0, eligible: 0, minutes: 0, hasTranscript: 0, unmatched: 0, ineligible: 0 };
+        const totals = { listed: 0, eligible: 0, minutes: 0, hasTranscript: 0, unmatched: 0, ineligible: 0, missed: 0, ...(state.totals || {}) };
         const items = [];
 
         while (cursor < untilMs && Date.now() < deadline && items.length < room) {
@@ -318,7 +405,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
         }
 
         // Transcribe, a few at a time, stopping new work ~90s before the deadline.
-        const results = { done: 0, error: 0, no_recording: 0 };
+        const results = { done: 0, labeled: 0, error: 0, no_recording: 0 };
         const work = queue.slice(0, maxItems);
         let next = 0;
         async function worker() {
@@ -346,6 +433,7 @@ module.exports = {
     MANGO_SESSIONS,
     createMangoSync,
     ineligibleReason,
+    callKind,
     externalNumber,
     findHubMatch,
     listCallsBetween,

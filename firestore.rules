@@ -101,6 +101,19 @@ service cloud.firestore {
       allow delete: if isOwnerEmail();
     }
 
+    // Appointment confirmations board. Rows are written by the
+    // syncConfirmations Cloud Function (Admin SDK, bypasses rules); staff may
+    // only record their own outreach on a row, never edit the Dentrix data.
+    match /artifacts/{appId}/public/data/confirmations/{apptId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['outreach'])
+        && request.resource.data.outreach is map;
+    }
+    match /confirmations_state/{office} {
+      allow read: if request.auth != null;
+    }
+
     // Deny everything else explicitly
     match /{document=**} {
       allow read, write: if false;

@@ -22,6 +22,7 @@ import PlaceholderPage from './pages/PlaceholderPage';
 // is a large, admin-heavy module (schedule grid, team CRUD, EBITDA calc) used
 // by a subset of staff, so it's worth keeping out of the main bundle.
 const Financials = lazy(() => import('./pages/Financials'));
+const Confirmations = lazy(() => import('./pages/Confirmations'));
 
 function FinancialsLoadingFallback() {
   return (
@@ -35,6 +36,7 @@ function FinancialsLoadingFallback() {
 const PAGE_TITLES = {
   '/': 'Live Dispatch',
   '/financials': 'Financials & Payroll',
+  '/confirmations': 'Appointment Confirmations',
   '/billing': 'Billing Center',
   '/clinical': 'Clinical Center',
   '/hygiene': 'Hygiene Center',
@@ -199,6 +201,19 @@ export default function App() {
               element={
                 <Suspense fallback={<FinancialsLoadingFallback />}>
                   <Financials
+                    user={user}
+                    onToast={showToast}
+                    officeLocation={officeLocation}
+                    setOfficeLocation={setOfficeLocation}
+                  />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/confirmations"
+              element={
+                <Suspense fallback={<FinancialsLoadingFallback />}>
+                  <Confirmations
                     user={user}
                     onToast={showToast}
                     officeLocation={officeLocation}

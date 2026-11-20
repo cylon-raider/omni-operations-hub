@@ -27,6 +27,7 @@ const APP_ID = "fds-operations-hub";
 
 // processAudioAndAnalyze is a hoisted function declaration further down.
 const mangoSync = require("./mango").createMangoSync({ db, appId: APP_ID, processAudioAndAnalyze });
+const confirmationsSync = require("./confirmations").createConfirmationsSync({ db, appId: APP_ID });
 
 // Call recordings are cached here on first fetch so a later retry (e.g.
 // after an OpenAI outage/billing lapse) doesn't depend on Mango's recording
@@ -800,6 +801,60 @@ exports.syncMangoRecordings = onSchedule({
             const snap = await t.get(lockRef);
             if (snap.exists && snap.data().owner === owner) t.delete(lockRef);
         }).catch(() => {});
+    }
+});
+
+/**
+ * ----------------------------------------------------------------------------
+ * Appointment confirmations board
+ * ----------------------------------------------------------------------------
+ * Every 15 minutes during office hours, re-read today + the next 3 days of
+ * appointments from Dentrix (read-only) and keep the unconfirmed ones in
+ * Firestore for the Confirmations page. See functions/confirmations.js.
+ */
+exports.syncConfirmations = onSchedule({
+    schedule: "*/15 6-18 * * *",
+    timeZone: "America/Phoenix",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    secrets: [ZATANNA_API_KEY],
+}, async () => {
+    const apiKey = ZATANNA_API_KEY.value();
+    if (!apiKey) return console.error("[confirmations] ZATANNA_API_KEY not configured; skipping.");
+    await confirmationsSync.run(apiKey);
+});
+
+// "Refresh now" button on the Confirmations page (signed-in users only).
+// Throttled per office so repeated clicks can't hammer Dentrix.
+exports.refreshConfirmations = onRequest({ timeoutSeconds: 120, memory: "512MiB", invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.set("Access-Control-Max-Age", "3600");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+    try {
+        const authHeader = req.get("Authorization") || "";
+        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
+        try {
+            await admin.auth().verifyIdToken(idToken);
+        } catch {
+            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
+        }
+        const office = String(req.query.office || "").toLowerCase();
+        if (!["glendale", "litchfield"].includes(office)) return res.status(400).json({ ok: false, error: "Unknown office." });
+
+        const stateRef = db.collection("confirmations_state").doc(office);
+        const last = (await stateRef.get()).data()?.lastSyncedAt?.toMillis?.() ?? 0;
+        if (Date.now() - last < 60e3) return res.status(200).json({ ok: true, throttled: true });
+
+        const [result] = await confirmationsSync.run(ZATANNA_API_KEY.value(), [office]);
+        if (result.error) return res.status(502).json({ ok: false, error: result.error });
+        return res.status(200).json({ ok: true, ...result });
+    } catch (e) {
+        console.error("refreshConfirmations error:", e);
+        return res.status(500).json({ ok: false, error: e.message });
     }
 });
 

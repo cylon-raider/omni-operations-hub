@@ -154,6 +154,8 @@ async function enrichCallWithDentrix(callRef, apiKey, { location, direction, fro
 
 module.exports = {
     ZATANNA_API_KEY,
+    ZATANNA_SESSIONS,
+    zatanna,
     enrichCallWithDentrix,
     lookupPatientByPhone,
     normalizePhone,

@@ -97,7 +97,16 @@ Since 2026-10-13 Mango's webhook stopped including `recording_url`. Zatanna also
 3. Progress lives in admin-only Firestore collections: `mango_sync_calls/{office}_{mangoCallId}` (done / has_transcript / ineligible / unmatched / no_recording / error + attempts), and `mango_sync_state` (backfill cursors + a run lease so overlapping runs never double-process).
 4. **Backfill** of the outage backlog is controlled by `MANGO_BACKFILL` in `functions/.env`: `off` (default), `count` (tallies eligible calls + minutes into the logs, no OpenAI spend), or `run` (transcribes ~30 calls per run, oldest first, with outbound auto-resolve disabled). `MANGO_BACKFILL_SINCE` sets the start (default 2026-10-13).
 
-## 8. Understanding the Source Code
+5. **Missed calls & voicemails.** The same sync classifies each Mango call (`callKind`): a **voicemail** (`voicemailId` set) is transcribed like any call and tagged `callKind: "voicemail"`; a **missed** call with no message is labeled a callback (`callKind: "missed"`, reason "Missed call", priority bumped to TODAY on live calls) or `"hangup"` if under 5 seconds. `CallCard.jsx` shows red/amber badges for these.
+6. **Returned calls.** In the ongoing pass, an outbound call that connected for 20s+ to a number resolves that office's open missed/voicemail calls from the same number within the last 7 days (`resolvedBy: "Returned call (<phone station>)"`). The backfill never does this.
+
+## 8. Appointment Confirmations Board
+
+1. **`syncConfirmations`** (scheduled every 15 min, 6am–6pm Phoenix) runs **`functions/confirmations.js`**: read today + the next 3 days of appointments from Dentrix (`listAppointments`, enhanced mode, read-only) and keep the **unconfirmed** ones in `artifacts/{appId}/public/data/confirmations/{office}_{appointmentId}` — patient name, time, provider, operatory, description, phone (one `getContact` per new row), reminder texts sent. No notes, procedures or other clinical detail are stored.
+2. Each sync flips rows to `confirmed` when Dentrix shows them confirmed, and flags `gone` for appointments that were cancelled, broken or moved; rows older than 14 days are deleted. Appointments already confirmed when first seen are never stored.
+3. **`src/pages/Confirmations.jsx`** (`/confirmations`, via `src/hooks/useConfirmations.js`) shows the list per day. Staff confirm **in Dentrix** — the hub never writes to Dentrix — and can only record `outreach` (left message / no answer / will call back / wrong number) on a row; `firestore.rules` enforces that. **`refreshConfirmations`** backs the "Refresh now" button (signed-in users, throttled to once a minute per office).
+
+## 9. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 
