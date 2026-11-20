@@ -107,7 +107,13 @@ Since 2026-10-13 Mango's webhook stopped including `recording_url`. Zatanna also
 2. Each sync flips rows to `confirmed` when Dentrix shows them confirmed, and flags `gone` for appointments that were cancelled, broken or moved; rows older than 14 days are deleted. Appointments already confirmed when first seen are never stored.
 3. **`src/pages/Confirmations.jsx`** (`/confirmations`, via `src/hooks/useConfirmations.js`) shows the list per day. Staff confirm **in Dentrix** — the hub never writes to Dentrix — and can only record `outreach` (left message / no answer / will call back / wrong number) on a row; `firestore.rules` enforces that. **`refreshConfirmations`** backs the "Refresh now" button (signed-in users, throttled to once a minute per office).
 
-## 9. Understanding the Source Code
+## 9. Morning Huddle & Treatment Follow-up
+
+1. **`functions/treatment.js` → `unscheduledTreatmentFor`** (per patient, read-only): `listTreatmentPlans` (plans with incomplete visits) → `listTreatmentPlanProcedures` (name, tooth, fee, estimates, plan visit) → `listFutureAppointments` (which plan visits / procedures upcoming appointments perform). A procedure is *unscheduled* if it is still `TREATMENT_PLAN`, active, not expired, and neither its visit nor itself is on an upcoming appointment. Dentrix only exposes plans per patient, so callers choose the patients.
+2. **Morning Huddle** (`functions/huddle.js`, `/huddle`): `buildHuddle` (5:30am & 12:30pm Phoenix) and `refreshHuddle` (signed-in, throttled to once per 2 min per office/day) write one doc per office per day to `artifacts/{appId}/public/data/huddles/{office}_{date}`: each scheduled patient with appointment flags (confirmed, new patient, premed, ASAP, lab case status, scheduled production) plus `getPatientBilling` aging **totals only** (no ledger), primary `getInsuranceVerification` status/date (flagged when not ELIGIBLE or older than 30 days), and unscheduled-treatment totals with procedure names. Totals drive the page's filter tiles.
+3. **Treatment Follow-up** (`/treatment`): `syncTreatmentFollowUp` (8pm & 10pm Phoenix) checks the day's patients, re-checks rows older than 7 days (up to 60 per run), then walks backwards day by day through past visits until `TREATMENT_BACKFILL_DAYS` (default 180) using a cursor in `treatment_state/backfill_{office}`. Rows live at `artifacts/{appId}/public/data/unscheduled_treatment/{office}_{patientId}` (name, phone, last seen, totals, procedure names); a row is marked `cleared` when nothing is left unscheduled. Staff can only write `outreach` (firestore.rules), via the shared `src/components/OutreachControls.jsx`.
+
+## 10. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 

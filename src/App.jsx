@@ -23,6 +23,8 @@ import PlaceholderPage from './pages/PlaceholderPage';
 // by a subset of staff, so it's worth keeping out of the main bundle.
 const Financials = lazy(() => import('./pages/Financials'));
 const Confirmations = lazy(() => import('./pages/Confirmations'));
+const Huddle = lazy(() => import('./pages/Huddle'));
+const TreatmentFollowUp = lazy(() => import('./pages/TreatmentFollowUp'));
 
 function FinancialsLoadingFallback() {
   return (
@@ -37,6 +39,8 @@ const PAGE_TITLES = {
   '/': 'Live Dispatch',
   '/financials': 'Financials & Payroll',
   '/confirmations': 'Appointment Confirmations',
+  '/huddle': 'Morning Huddle',
+  '/treatment': 'Treatment Follow-up',
   '/billing': 'Billing Center',
   '/clinical': 'Clinical Center',
   '/hygiene': 'Hygiene Center',
@@ -219,6 +223,22 @@ export default function App() {
                     officeLocation={officeLocation}
                     setOfficeLocation={setOfficeLocation}
                   />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/huddle"
+              element={
+                <Suspense fallback={<FinancialsLoadingFallback />}>
+                  <Huddle user={user} onToast={showToast} officeLocation={officeLocation} setOfficeLocation={setOfficeLocation} />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/treatment"
+              element={
+                <Suspense fallback={<FinancialsLoadingFallback />}>
+                  <TreatmentFollowUp user={user} onToast={showToast} officeLocation={officeLocation} setOfficeLocation={setOfficeLocation} />
                 </Suspense>
               }
             />

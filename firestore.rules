@@ -114,6 +114,20 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
 
+    // Morning huddle — built by the buildHuddle / refreshHuddle functions only.
+    match /artifacts/{appId}/public/data/huddles/{huddleId} {
+      allow read: if request.auth != null;
+    }
+
+    // Unscheduled treatment follow-up list — rows written by the
+    // syncTreatmentFollowUp function; staff may only log their outreach.
+    match /artifacts/{appId}/public/data/unscheduled_treatment/{rowId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['outreach'])
+        && request.resource.data.outreach is map;
+    }
+
     // Deny everything else explicitly
     match /{document=**} {
       allow read, write: if false;
