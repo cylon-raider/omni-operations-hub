@@ -49,6 +49,10 @@ const CLAIM_LEASE_MS = 8 * 60e3;        // a claimed call is left alone by other
 const RECORDING_WAIT_MS = 30 * 60e3;    // keep retrying a call with no recording yet this long
 const WEBHOOK_LOOKBACK_MS = 30 * 60e3;  // webhook-triggered sync looks at the last 30 minutes
 const WEBHOOK_SETTLE_MS = 10e3;
+// Mango can take a while to close a call that was forwarded outside the office
+// (status stays "in-progress" with no endedAt). Keep waiting this long before
+// giving up on a call that never shows as completed.
+const IN_PROGRESS_GIVE_UP_MS = 2 * 3600e3;
 const STAFF_STATUSES = ["In Progress", "Resolved"]; // never reset what staff set by hand
 const REQUEST_TIMEOUT_MS = 30000;
 
@@ -205,7 +209,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
             if (rec?.status === "processing" && (rec.leaseUntil || 0) > now) { pending++; continue; } // another run has it
 
             const endMs = call.endedAt ? Date.parse(call.endedAt) : Date.parse(call.startedAt);
-            if (call.status !== "completed" && now - endMs < UNMATCHED_GIVE_UP_MS) { pending++; continue; }
+            if (call.status !== "completed" && now - endMs < IN_PROGRESS_GIVE_UP_MS) { pending++; continue; }
             if (now - endMs < settleMs) { pending++; continue; }
 
             const reason = ineligibleReason(call);
