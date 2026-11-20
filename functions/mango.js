@@ -415,12 +415,12 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
     }
 
     /** One scheduled run. */
-    async function run({ apiKey, openAiKey, mode = "off", sinceIso, maxItems = 30, budgetMs = 7.5 * 60e3 }) {
+    async function run({ apiKey, openAiKey, mode = "off", sinceIso, maxItems = 30, budgetMs = 7.5 * 60e3, includeOngoing = true }) {
         const started = Date.now();
         const deadline = started + budgetMs;
         const now = started;
 
-        const queue = (await collectOngoing(apiKey, now)).map((it) => ({ ...it, isBackfill: false }));
+        const queue = includeOngoing ? (await collectOngoing(apiKey, now)).map((it) => ({ ...it, isBackfill: false })) : [];
 
         if (mode === "count" || mode === "run") {
             const sinceMs = Date.parse(sinceIso);
@@ -467,7 +467,7 @@ function createMangoSync({ db, appId, processAudioAndAnalyze }) {
     /**
      * Immediate sync for the offices a Mango webhook just reported a call for:
      * look at the last 30 minutes and process anything finished, right away.
-     * Waits longer for a fresh recording to appear. The 5-minute schedule
+     * Waits longer for a fresh recording to appear. The 2-minute schedule
      * still catches anything this misses (not finished yet, Zatanna hiccup).
      */
     async function syncNow({ apiKey, openAiKey, offices, budgetMs = 4 * 60e3 }) {

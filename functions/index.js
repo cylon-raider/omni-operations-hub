@@ -268,7 +268,7 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secre
 
         // Mango no longer sends recordings, but every call still triggers this
         // webhook — use it to fetch the recording through Zatanna right away
-        // instead of waiting for the 5-minute syncMangoRecordings run.
+        // instead of waiting for the 2-minute syncMangoRecordings run.
         const touchedOffices = [...new Set(processedEvents
             .filter((e) => (e.payload || e).direction !== "internal")
             .map((e) => (e.payload || e).location || (req.query.location || "glendale").toLowerCase()))];
@@ -765,14 +765,14 @@ exports.lookupDentrix = onRequest({ timeoutSeconds: 60, invoker: "public", secre
  * ----------------------------------------------------------------------------
  * Mango recordings via Zatanna (scheduled)
  * ----------------------------------------------------------------------------
- * Every 5 minutes: pull recent Mango calls through Zatanna, match each to the
+ * Every 2 minutes: pull recent Mango calls through Zatanna, match each to the
  * call doc the webhook created, and transcribe it with the same pipeline as
  * before. Optionally also works through the backlog since the Oct 13 outage —
  * set MANGO_BACKFILL in functions/.env to "count" (tally only, see logs) or
  * "run" (transcribe), then redeploy. See functions/mango.js.
  */
 exports.syncMangoRecordings = onSchedule({
-    schedule: "every 5 minutes",
+    schedule: "every 2 minutes",
     timeZone: "America/Phoenix",
     timeoutSeconds: 540,
     memory: "512MiB",
@@ -785,7 +785,16 @@ exports.syncMangoRecordings = onSchedule({
         return;
     }
 
-    // Lease so two overlapping runs never process the same calls.
+    // Recent calls: every run, no global lock needed — each call is claimed
+    // individually, so overlapping runs (or the webhook path) never double up.
+    await mangoSync.run({ apiKey, openAiKey, mode: "off", budgetMs: 210e3 })
+        .catch((err) => console.warn("[mango-sync] recent-calls pass failed:", err.message));
+
+    const mode = (process.env.MANGO_BACKFILL || "off").toLowerCase();
+    if (mode !== "count" && mode !== "run") return;
+
+    // Backfill: one at a time (it advances a shared cursor), so a slow backfill
+    // run never blocks the recent-calls pass above.
     const lockRef = db.collection("mango_sync_state").doc("lock");
     const owner = randomUUID();
     const leaseMs = 9.5 * 60e3;
@@ -795,16 +804,15 @@ exports.syncMangoRecordings = onSchedule({
         t.set(lockRef, { owner, expiresAt: Date.now() + leaseMs });
         return true;
     });
-    if (!gotLock) {
-        console.log("[mango-sync] previous run still active; skipping.");
-        return;
-    }
+    if (!gotLock) return;
 
     try {
         await mangoSync.run({
             apiKey,
             openAiKey,
-            mode: (process.env.MANGO_BACKFILL || "off").toLowerCase(),
+            mode,
+            includeOngoing: false,
+            budgetMs: 5 * 60e3, // + up to 3.5 min recent pass, within the 9-min timeout
             sinceIso: process.env.MANGO_BACKFILL_SINCE || "2026-10-13T00:00:00-07:00",
         });
     } finally {
