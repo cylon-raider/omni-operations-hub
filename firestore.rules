@@ -38,7 +38,8 @@ service cloud.firestore {
 
     // User profiles.
     // - A payroll admin can write anything on anyone's doc (approving
-    //   accounts, promoting/demoting `payrollRole`).
+    //   accounts, promoting/demoting `payrollRole`) — except that an account
+    //   can only be approved once its email is verified (`emailVerified`).
     // - Anyone can write their OWN profile, except:
     //     * the approval fields — never self-set, so nobody can approve
     //       themselves;
@@ -47,7 +48,11 @@ service cloud.firestore {
     //       otherwise). Mirrors usePayrollRole.js, but re-validated
     //       server-side so a non-owner can never grant themselves admin;
     //     * `email` — must be the account's real sign-in email, so an admin
-    //       reviewing a pending account sees who it actually is.
+    //       reviewing a pending account sees who it actually is;
+    //     * `emailVerified` — must match the account's own sign-in token, so
+    //       it is only true once they clicked the link in the verification
+    //       email. Someone who signs up with a staff member's address can't
+    //       do that, so they can't be approved by mistake.
     // - A pending (unapproved) user can read their own doc, so the app can
     //   show them the "waiting for approval" screen, but nobody else's.
     match /users/{userId} {
@@ -81,14 +86,32 @@ service cloud.firestore {
               && request.resource.data.email.lower() == request.auth.token.email.lower());
       }
 
+      function selfEmailVerifiedOk() {
+        return !('emailVerified' in changedKeys())
+          || request.resource.data.emailVerified == (request.auth.token.get('email_verified', false) == true);
+      }
+
+      // Granting approval (not approved → approved) needs a verified email,
+      // as recorded on the profile before this write. Accounts approved
+      // before verification existed stay approved; other admin edits (role,
+      // revoking) are unaffected.
+      function approvalGrantOk() {
+        let wasApproved = resource != null && resource.data.get('approved', false) == true;
+        let nowApproved = request.resource != null && request.resource.data.get('approved', false) == true;
+        return !nowApproved
+          || wasApproved
+          || (resource != null && resource.data.get('emailVerified', false) == true);
+      }
+
       allow read: if isSelf() || isApproved();
 
-      allow write: if isPayrollAdmin()
+      allow write: if (isPayrollAdmin() && approvalGrantOk())
         || (isSelf()
             && request.resource != null
             && selfApprovalUntouched()
             && selfPayrollRoleOk()
-            && selfEmailOk());
+            && selfEmailOk()
+            && selfEmailVerifiedOk());
     }
 
     // Payroll: staff directory, schedule, and daily collections logs.

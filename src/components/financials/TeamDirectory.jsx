@@ -12,7 +12,7 @@
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock, MapPin, UserCheck, UserX } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock, MapPin, UserCheck, UserX, MailCheck, MailWarning } from 'lucide-react';
 import { db } from '../../config/firebase';
 import SegmentedControl from '../SegmentedControl';
 import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS, LOCATIONS } from '../../utils/payrollConstants';
@@ -362,7 +362,8 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLoc
             </h3>
             <p className="text-gray-500 text-xs mt-1">
               Approve new sign-ups before they can see calls and patient information, and choose who can manage payroll.
-              Only approve people you recognize — anyone can create an account on the sign-in page.
+              Only approve people you recognize — anyone can create an account on the sign-in page. An account can be
+              approved once its owner has confirmed their email address.
             </p>
           </div>
           <div className="divide-y divide-gray-50">
@@ -396,12 +397,25 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLoc
                   <div className="flex items-center gap-2 flex-wrap sm:justify-end">
                     {!approved ? (
                       <>
-                        <div className="text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200">
-                          Waiting for approval
-                        </div>
+                        {/* firestore.rules only lets an account be approved once
+                            its email is verified (they clicked the link). */}
+                        {u.emailVerified === true ? (
+                          <div className="text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1">
+                            <MailCheck size={12} /> Email confirmed
+                          </div>
+                        ) : (
+                          <div
+                            title="They need to click the link in the verification email we sent them. They can send a new one from their waiting screen."
+                            className="text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1"
+                          >
+                            <MailWarning size={12} /> Email not confirmed yet
+                          </div>
+                        )}
                         <button
                           onClick={() => setApproval(u, true)}
-                          className="text-xs font-bold text-white bg-primary-600 hover:bg-primary-500 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                          disabled={u.emailVerified !== true}
+                          title={u.emailVerified === true ? undefined : 'Available once they confirm their email address'}
+                          className="text-xs font-bold text-white bg-primary-600 hover:bg-primary-500 disabled:bg-gray-300 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
                         >
                           <UserCheck size={14} /> Approve
                         </button>

@@ -29,11 +29,16 @@ const PEOPLE = {
   admin: { uid: 'admin', email: 'manager@example.com', doc: { approved: true, payrollRole: 'admin' } },
   staff: { uid: 'staff', email: 'staff@example.com', doc: { approved: true, payrollRole: 'viewer' } },
   pending: { uid: 'pending', email: 'stranger@example.com', doc: { payrollRole: 'viewer' } },
+  // Signed up, clicked the verification link, waiting for approval.
+  newHire: { uid: 'newHire', email: 'newhire@example.com', emailVerified: true, doc: { payrollRole: 'viewer', emailVerified: true } },
   revokedAdmin: { uid: 'revokedAdmin', email: 'former@example.com', doc: { approved: false, payrollRole: 'admin' } },
 };
 
 let env;
-const as = (who) => env.authenticatedContext(PEOPLE[who].uid, { email: PEOPLE[who].email }).firestore();
+const as = (who) => env.authenticatedContext(PEOPLE[who].uid, {
+  email: PEOPLE[who].email,
+  email_verified: PEOPLE[who].emailVerified === true,
+}).firestore();
 const callRef = (db, id = 'call1') => doc(db, CALLS, id);
 
 before(async () => {
@@ -141,20 +146,47 @@ describe('account approval', () => {
   });
 
   test('a payroll admin can approve and revoke accounts; plain staff cannot', async () => {
-    await assertFails(updateDoc(doc(as('staff'), 'users', 'pending'), { approved: true }));
+    await assertFails(updateDoc(doc(as('staff'), 'users', 'newHire'), { approved: true }));
     const admin = as('admin');
-    await assertSucceeds(updateDoc(doc(admin, 'users', 'pending'), {
+    await assertSucceeds(updateDoc(doc(admin, 'users', 'newHire'), {
       approved: true, approvedBy: 'manager@example.com', approvedAt: serverTimestamp(),
     }));
-    await assertSucceeds(getDoc(callRef(as('pending'))));
-    await assertSucceeds(updateDoc(doc(admin, 'users', 'pending'), { approved: false, payrollRole: 'viewer' }));
-    await assertFails(getDoc(callRef(as('pending'))));
+    await assertSucceeds(getDoc(callRef(as('newHire'))));
+    await assertSucceeds(updateDoc(doc(admin, 'users', 'newHire'), { approved: false, payrollRole: 'viewer' }));
+    await assertFails(getDoc(callRef(as('newHire'))));
+  });
+
+  test('an account can only be approved once its email is verified', async () => {
+    const admin = as('admin');
+    // Unverified sign-up: no approval, not even by setting emailVerified in the same write.
+    await assertFails(updateDoc(doc(admin, 'users', 'pending'), { approved: true }));
+    await assertFails(updateDoc(doc(admin, 'users', 'pending'), { approved: true, emailVerified: true }));
+    // Staff approved before verification existed are untouched by it:
+    // promoting, demoting and revoking them still work.
+    await assertSucceeds(updateDoc(doc(admin, 'users', 'staff'), { payrollRole: 'admin' }));
+    await assertSucceeds(updateDoc(doc(admin, 'users', 'staff'), { payrollRole: 'viewer' }));
+    await assertSucceeds(updateDoc(doc(admin, 'users', 'staff'), { approved: false }));
+    // …but re-approving a revoked, unverified account needs verification too.
+    await assertFails(updateDoc(doc(admin, 'users', 'staff'), { approved: true }));
+  });
+
+  test('emailVerified can only mirror the account\'s own sign-in token', async () => {
+    // Token says not verified → can't claim it.
+    await assertFails(updateDoc(doc(as('pending'), 'users', 'pending'), { emailVerified: true }));
+    await assertSucceeds(updateDoc(doc(as('pending'), 'users', 'pending'), { emailVerified: false }));
+    // Token says verified (they clicked the link) → can record it, and can't deny it.
+    const verified = env.authenticatedContext('pending', { email: 'stranger@example.com', email_verified: true }).firestore();
+    await assertSucceeds(updateDoc(doc(verified, 'users', 'pending'), { emailVerified: true }));
+    await assertFails(updateDoc(doc(verified, 'users', 'pending'), { emailVerified: false }));
+    // A new sign-up can't create its profile already marked verified either.
+    const fresh = env.authenticatedContext('fresh', { email: 'fresh@example.com', email_verified: false }).firestore();
+    await assertFails(setDoc(doc(fresh, 'users', 'fresh'), { uid: 'fresh', email: 'fresh@example.com', emailVerified: true }));
   });
 
   test('an owner with no profile doc yet can still approve accounts once bootstrapped as admin', async () => {
     const owner = as('owner');
     await assertSucceeds(setDoc(doc(owner, 'users', 'owner'), { uid: 'owner', email: 'cmarkel@gmail.com', payrollRole: 'admin' }, { merge: true }));
-    await assertSucceeds(updateDoc(doc(owner, 'users', 'pending'), { approved: true }));
+    await assertSucceeds(updateDoc(doc(owner, 'users', 'newHire'), { approved: true }));
   });
 
   test('revoking approval also removes payroll-admin powers', async () => {
