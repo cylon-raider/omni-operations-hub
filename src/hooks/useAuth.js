@@ -4,6 +4,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendEmailVerification,
   signOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
@@ -67,6 +68,14 @@ export function useAuth() {
         department: 'Unassigned',
         createdAt: new Date()
       }, { merge: true });
+      // An admin can only approve the account once this email is verified
+      // (firestore.rules → approvalGrantOk). If sending fails, the waiting
+      // screen offers a "Send a new link" button.
+      try {
+        await sendEmailVerification(cred.user);
+      } catch (verifyErr) {
+        console.error('Failed to send verification email:', verifyErr);
+      }
     } catch (err) {
       const messages = {
         'auth/email-already-in-use': 'An account with this email already exists.',

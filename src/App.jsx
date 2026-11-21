@@ -128,7 +128,7 @@ export default function App() {
   // Condition 3: Signed in, but not approved yet
   // --------------------------------------------------------------------------
   if (access.status !== 'approved') {
-    return <PendingApproval user={user} onLogout={logout} />;
+    return <PendingApproval user={user} profile={access.profile} onLogout={logout} />;
   }
 
   // --------------------------------------------------------------------------
