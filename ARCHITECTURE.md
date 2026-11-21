@@ -34,7 +34,7 @@ Let's walk through exactly what happens during a typical inbound call.
 
 ### Phase 1: The Phone Call
 1. A patient calls the front desk. The call is completed and recorded by Mango Voice.
-2. Mango Voice fires a `POST` request to our Cloud Function URL (`functions/index.js -> mangoWebhook`).
+2. Mango Voice fires a `POST` request to our Cloud Function URL (`functions/index.js -> mangoWebhook`). The URL carries a shared secret (`&key=...`); requests without it are rejected (Section 10).
 3. The payload contains data like the caller's phone number, the duration, and an `audio_url`.
 
 ### Phase 2: Cloud Function Processing (`functions/index.js`)
@@ -113,7 +113,18 @@ Since 2026-10-13 Mango's webhook stopped including `recording_url`. Zatanna also
 2. **Morning Huddle** (`functions/huddle.js`, `/huddle`): a build takes a few minutes (several Dentrix lookups per patient, 3 patients at a time), so nothing waits on it: `buildHuddle` (5:30am & 12:30pm Phoenix, one request per office for today + tomorrow) and `refreshHuddle` (signed-in; returns immediately; skips if a build is running or one finished <2 min ago) only queue a doc in `huddle_requests/`, and **`processHuddleRequest`** (Firestore trigger, 9-min timeout) builds it. The huddle doc carries `building`/`buildStartedAt`/`buildError` so the page shows progress (a build older than 10 min is treated as abandoned). Builds write one doc per office per day to `artifacts/{appId}/public/data/huddles/{office}_{date}`: each scheduled patient with appointment flags (confirmed, new patient, premed, ASAP, lab case status, scheduled production) plus `getPatientBilling` aging **totals only** (no ledger), primary `getInsuranceVerification` status/date (flagged when not ELIGIBLE or older than 30 days), and unscheduled-treatment totals with procedure names. Totals drive the page's filter tiles.
 3. **Treatment Follow-up** (`/treatment`): `syncTreatmentFollowUp` (8pm & 10pm Phoenix) checks the day's patients, re-checks rows older than 7 days (up to 60 per run), then walks backwards day by day through past visits until `TREATMENT_BACKFILL_DAYS` (default 180) using a cursor in `treatment_state/backfill_{office}`. Rows live at `artifacts/{appId}/public/data/unscheduled_treatment/{office}_{patientId}` (name, phone, last seen, totals, procedure names); a row is marked `cleared` when nothing is left unscheduled. Staff can only write `outreach` (firestore.rules), via the shared `src/components/OutreachControls.jsx`.
 
-## 10. Understanding the Source Code
+## 10. Access Control
+
+The hub holds patient names, phone numbers, appointments, balances and call transcripts, so a Firebase sign-in alone is not enough: anyone on the internet can create an account on the login screen.
+
+1. **Approval.** A new account starts out *pending*. It can sign in, but sees only the "Waiting for approval" screen (`src/components/PendingApproval.jsx`, driven by `src/hooks/useAccess.js`) until an owner or payroll admin approves it in **Financials → Team → App Access**, which sets `approved: true` (plus `approvedBy`/`approvedAt`) on `users/{uid}`. The page opens by itself once approved, and goes back to the waiting screen if access is removed. Removing access also drops payroll admin.
+2. **Enforced on the server, not just hidden.** `isApproved()` in `firestore.rules` gates every read and write of practice data, and nobody can set their own approval. Owners (`isOwnerEmail()`) are always approved. The HTTP functions the pages call (`uploadRecording`, `lookupDentrix`, `refreshConfirmations`, `refreshHuddle`) apply the same check through `requireApprovedUser` in `functions/access.js`. A user's own profile can't claim an email other than the one they signed in with, so the App Access list shows who each account really belongs to.
+3. **What staff can change on a call.** The functions write everything about a call (caller, transcript, AI analysis, recording, Dentrix match). Staff can only log a manual callback (Quick Entry, as a `Waiting` call created by themselves) and change a call's queue, priority and status (`resolvedBy` must be themselves). Only owners can delete calls. On the confirmations and treatment boards, staff can only log outreach.
+4. **The Mango webhook** is public (Mango has no Firebase sign-in), so it requires the `MANGO_WEBHOOK_SECRET` secret on every POST, either as `key=` on the URL configured in Mango or as an `X-Webhook-Key` header. Without it the request is refused before it can create a call, download a recording, or spend OpenAI and Dentrix requests.
+5. **Tests.** `tests/firestore-rules/` checks these rules against the Firestore emulator (`npm test` there; needs Java). Run it whenever `firestore.rules` changes.
+6. **Approving existing accounts.** `functions/scripts/approve-existing-users.js` lists every account with its approval state and can approve them in bulk. It was used once, before these rules first went live.
+
+## 11. Understanding the Source Code
 
 If you want to read the code, here is the best order to look at the files:
 

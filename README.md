@@ -61,11 +61,25 @@ npm install
 #   firebase functions:secrets:set ZATANNA_API_KEY
 # (the key needs the dentrix-ascend and mangovoice integrations enabled)
 #
+# mangoWebhook only accepts requests carrying a shared secret. Generate one
+# (e.g. `openssl rand -hex 32`), store it, and add it to the webhook URL in
+# Mango as `&key=<secret>` (see ARCHITECTURE.md → Access Control):
+#   firebase functions:secrets:set MANGO_WEBHOOK_SECRET
+#
 # Optional, to transcribe the backlog since the Oct 13 recording outage:
 # MANGO_BACKFILL=count   # tally only (see firebase functions:log), then "run"
 ```
 
-### 4. Deployment
+### 4. Firestore rules tests
+`firestore.rules` decides who can see patient data, so it has its own tests,
+run against the Firestore emulator (needs Java):
+```bash
+cd tests/firestore-rules
+npm install
+npm test
+```
+
+### 5. Deployment
 To build the React application and deploy both the frontend and the cloud functions to Firebase:
 ```bash
 npm run build

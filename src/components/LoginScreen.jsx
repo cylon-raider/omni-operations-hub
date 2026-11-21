@@ -72,7 +72,7 @@ export default function LoginScreen({ onLogin, onRegister, onResetPassword, erro
             {mode === 'login'
               ? 'Enter your credentials to access the operations hub.'
               : mode === 'register'
-                ? 'Create a new staff account to get started.'
+                ? 'Create a staff account. A practice owner or manager will need to approve it before you can use the hub.'
                 : 'We\'ll send a password reset link to your email.'}
           </p>
 

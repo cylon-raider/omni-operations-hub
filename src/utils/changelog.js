@@ -6,6 +6,7 @@ export const CHANGELOG = [
   {
     date: '2026-11-21',
     items: [
+      'New accounts now need approval: if someone creates an account on the sign-in page, they\'ll see a "Waiting for approval" screen until a practice owner or manager approves them (Financials → Team → App Access). Nothing changes for anyone who already uses the hub.',
       'New "Morning Huddle" page: everyone on today\'s or tomorrow\'s schedule with what to know before they arrive — unconfirmed, new patients, balances due, insurance that needs verifying, unscheduled treatment (a chance to do more while they\'re here), lab cases that aren\'t back yet, and premeds. Tap a tile to see just those patients. It\'s built at 5:30am and 12:30pm; use "Refresh now" any time.',
       'New "Treatment Follow-up" page: patients with treatment planned in Dentrix that isn\'t booked yet, biggest dollar amount first, with phone numbers. Book it in Dentrix as usual and they drop off the list on their own. The list fills in over the coming nights as the hub works back through past visits.',
       'Call cards on phones: the buttons now always show and wrap neatly instead of running off the screen.',

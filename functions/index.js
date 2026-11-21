@@ -13,7 +13,13 @@ const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { Buffer } = require("buffer");
 const { randomUUID } = require("crypto");
+const { defineSecret } = require("firebase-functions/params");
 const { ZATANNA_API_KEY, enrichCallWithDentrix } = require("./dentrix");
+const { requireApprovedUser, webhookKeyMatches } = require("./access");
+
+// Shared secret Mango must send with every webhook (as `&key=` on the URL
+// configured in Mango). Set with: firebase functions:secrets:set MANGO_WEBHOOK_SECRET
+const MANGO_WEBHOOK_SECRET = defineSecret("MANGO_WEBHOOK_SECRET");
 
 // Initialize Firebase Admin (Required to talk to the database securely)
 // storageBucket is explicit rather than relying on auto-detection - see the
@@ -76,9 +82,12 @@ const GOOGLE_SHEET_WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "";
  * Mango Webhook Receiver
  * ----------------------------------------------------------------------------
  * This function creates a public URL on the internet. Mango Voice is configured
- * to send data to this URL every time a phone call happens.
+ * to send data to this URL every time a phone call happens. Because the URL is
+ * public, every POST must carry MANGO_WEBHOOK_SECRET (see functions/access.js);
+ * anything else is rejected before it can create calls or spend OpenAI and
+ * Dentrix requests.
  */
-exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
+exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secrets: [ZATANNA_API_KEY, MANGO_WEBHOOK_SECRET] }, async (req, res) => {
     // A quick health-check. If you visit this URL in your browser (a GET request),
     // it will just say "Active & Online!"
     if (req.method === "GET") {
@@ -87,6 +96,11 @@ exports.mangoWebhook = onRequest({ timeoutSeconds: 300, invoker: "public", secre
 
     if (req.method !== "POST") {
         return res.status(405).send("Method Not Allowed");
+    }
+
+    if (!webhookKeyMatches(req, MANGO_WEBHOOK_SECRET.value())) {
+        console.warn("Rejected mango webhook without a valid key");
+        return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
     try {
@@ -644,16 +658,9 @@ exports.uploadRecording = onRequest({ timeoutSeconds: 300, memory: "512MiB", inv
     if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
     try {
-        // Only signed-in hub users may upload — verify the Firebase ID token.
-        const authHeader = req.get("Authorization") || "";
-        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
-        let uploader;
-        try {
-            uploader = await admin.auth().verifyIdToken(idToken);
-        } catch {
-            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
-        }
+        // Only approved hub users may upload.
+        const uploader = await requireApprovedUser(req, res);
+        if (!uploader) return;
 
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         if (!OPENAI_API_KEY) return res.status(500).json({ ok: false, error: "OpenAI key not configured." });
@@ -728,14 +735,7 @@ exports.lookupDentrix = onRequest({ timeoutSeconds: 60, invoker: "public", secre
     if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
     try {
-        const authHeader = req.get("Authorization") || "";
-        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
-        try {
-            await admin.auth().verifyIdToken(idToken);
-        } catch {
-            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
-        }
+        if (!(await requireApprovedUser(req, res))) return;
 
         const apiKey = ZATANNA_API_KEY.value();
         if (!apiKey) return res.status(500).json({ ok: false, error: "Dentrix (Zatanna) key not configured." });
@@ -856,14 +856,7 @@ exports.refreshConfirmations = onRequest({ timeoutSeconds: 120, memory: "512MiB"
     if (req.method === "OPTIONS") return res.status(204).send("");
     if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
     try {
-        const authHeader = req.get("Authorization") || "";
-        const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
-        try {
-            await admin.auth().verifyIdToken(idToken);
-        } catch {
-            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
-        }
+        if (!(await requireApprovedUser(req, res))) return;
         const office = String(req.query.office || "").toLowerCase();
         if (!["glendale", "litchfield"].includes(office)) return res.status(400).json({ ok: false, error: "Unknown office." });
 
@@ -927,14 +920,8 @@ exports.refreshHuddle = onRequest({ timeoutSeconds: 30, invoker: "public" }, asy
     if (req.method === "OPTIONS") return res.status(204).send("");
     if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
     try {
-        const idToken = (req.get("Authorization") || "").replace(/^Bearer /, "");
-        if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
-        let user;
-        try {
-            user = await admin.auth().verifyIdToken(idToken);
-        } catch {
-            return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
-        }
+        const user = await requireApprovedUser(req, res);
+        if (!user) return;
         const office = String(req.query.office || "").toLowerCase();
         if (!["glendale", "litchfield"].includes(office)) return res.status(400).json({ ok: false, error: "Unknown office." });
         const [today, tomorrow] = huddleSync.upcomingDates();

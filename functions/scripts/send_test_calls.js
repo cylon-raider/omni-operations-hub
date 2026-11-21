@@ -1,6 +1,13 @@
 const fetch = require('node-fetch');
 
+// The webhook rejects requests without the shared secret (see functions/access.js).
+// Usage: MANGO_WEBHOOK_SECRET=... node send_test_calls.js
+if (!process.env.MANGO_WEBHOOK_SECRET) {
+  console.error('Set MANGO_WEBHOOK_SECRET to the value stored in Secret Manager.');
+  process.exit(1);
+}
 const WEBHOOK_URL = "https://mangowebhook-tckilgaywa-uc.a.run.app?location=litchfield";
+const WEBHOOK_HEADERS = { "X-Webhook-Key": process.env.MANGO_WEBHOOK_SECRET };
 
 const testCalls = [
   { summary: "Patient wants to schedule a cleaning.", assignment: "Front Desk Supervisor", priority: "NORMAL", status: "Waiting", location: "litchfield", direction: "inbound" },
@@ -35,7 +42,7 @@ async function sendTests() {
     try {
       const res = await fetch(WEBHOOK_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...WEBHOOK_HEADERS },
         body: JSON.stringify(payload)
       });
       console.log(`Result: ${res.status} ${await res.text()}`);

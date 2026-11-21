@@ -1,0 +1,14 @@
+{
+  "name": "fds-hub-firestore-rules-tests",
+  "private": true,
+  "type": "module",
+  "description": "Tests for ../../firestore.rules against the Firestore emulator (needs Java).",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-fds-hub \"node --test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.16.0",
+    "firebase-tools": "^14.0.0"
+  }
+}
