@@ -70,14 +70,19 @@ npm install
 # MANGO_BACKFILL=count   # tally only (see firebase functions:log), then "run"
 ```
 
-### 4. Firestore rules tests
-`firestore.rules` decides who can see patient data, so it has its own tests,
-run against the Firestore emulator (needs Java):
+### 4. Security tests
+These run automatically on every pull request (`.github/workflows/security-tests.yml`).
+To run them locally:
 ```bash
-cd tests/firestore-rules
-npm install
-npm test
+# firestore.rules, against the Firestore emulator (needs Java)
+cd tests/firestore-rules && npm install && npm test
+
+# No Cloud Function is accidentally public (needs `npm install` in functions/)
+GCLOUD_PROJECT=demo-fds-hub node --test tests/functions/http-endpoints.test.cjs
 ```
+Every HTTP function is deployed **public** unless it sets `invoker: "private"`.
+A new public endpoint must check credentials itself and be added to
+`PUBLIC_ENDPOINTS` in that test.
 
 ### 5. Deployment
 To build the React application and deploy both the frontend and the cloud functions to Firebase:

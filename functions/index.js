@@ -549,88 +549,6 @@ Transcript: "${transcript}"
         });
     }
 }
-// Not `invoker: "public"` — one-off migration tool, only callable by
-// someone with Cloud Functions Invoker permission on this project.
-exports.migrateDb = onRequest(async (req, res) => {
-    try {
-        const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
-        const snapshot = await callsRef.get();
-        
-        let count = 0;
-        let batch = db.batch();
-        
-        for (const doc of snapshot.docs) {
-            if (!doc.data().location) {
-                batch.update(doc.ref, { location: "glendale" });
-                count++;
-                
-                if (count % 400 === 0) {
-                    await batch.commit();
-                    batch = db.batch();
-                }
-            }
-        }
-        
-        if (count % 400 !== 0) {
-            await batch.commit();
-        }
-        
-        res.json({ success: true, updated: count });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Not `invoker: "public"` — admin recovery tool, only callable by someone
-// with Cloud Functions Invoker permission on this project.
-exports.reprocessFailed = onRequest({ timeoutSeconds: 300 }, async (req, res) => {
-    try {
-        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        const MANGO_TOKEN = process.env.MANGO_TOKEN;
-        
-        const limit = parseInt(req.query.limit) || 10;
-        const callsRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("calls");
-        
-        // Find calls with Transcription Error
-        const snapshot = await callsRef.where("status", "==", "Transcription Error").limit(limit).get();
-        
-        if (snapshot.empty) {
-            return res.json({ success: true, message: "No failed calls found." });
-        }
-        
-        const promises = snapshot.docs.map(async (docSnap) => {
-            const data = docSnap.data();
-            const location = data.location || "glendale";
-            const toNumber = data.toNumber || "";
-            const recordingUrl = data.recordingUrl || data.recording_url;
-            
-            if (recordingUrl && OPENAI_API_KEY) {
-                const analysis = await processAudioAndAnalyze(docSnap.id, recordingUrl, OPENAI_API_KEY, MANGO_TOKEN, toNumber, location, data.direction || 'unknown');
-                if (analysis) {
-                    await docSnap.ref.set({
-                        summary: analysis.summary || "Call processed",
-                        sentiment: analysis.sentiment || "Neutral",
-                        priority: analysis.priority || "NORMAL",
-                        assignment: analysis.assignment || "Front Desk Supervisor",
-                        employeeName: analysis.employee_name || null,
-                        isResolved: analysis.is_resolved || false,
-                        reason: analysis.reason || null,
-                        status: "Waiting",
-                        location: location
-                    }, { merge: true });
-                }
-            }
-        });
-        
-        await Promise.all(promises);
-        
-        res.json({ success: true, reprocessed: snapshot.size });
-    } catch (e) {
-        console.error("Reprocess error:", e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 /**
  * ----------------------------------------------------------------------------
  * Manual Recording Upload (staff-facing fallback)
@@ -961,7 +879,3 @@ exports.syncTreatmentFollowUp = onSchedule({
     if (!apiKey) return console.error("[treatment] ZATANNA_API_KEY not configured; skipping.");
     await treatmentSync.run(apiKey, { backfillDays: parseInt(process.env.TREATMENT_BACKFILL_DAYS, 10) || 180 });
 });
-
-exports.debugDb = require('./debug').debugDb;
-exports.fixCalls = require('./debug').fixCalls;
-exports.clearErrors = require('./debug').clearErrors;
