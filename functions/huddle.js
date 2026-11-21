@@ -15,7 +15,10 @@ const { ZATANNA_SESSIONS, zatanna } = require("./dentrix");
 const { unscheduledTreatmentFor, listAppointmentsOn, clinicDate, addDays, pool } = require("./treatment");
 
 const VERIFY_STALE_DAYS = 30;
-const CONCURRENCY = 6;
+// Patients processed at once. Each one fans out to ~3 Dentrix calls in parallel,
+// so 3 here is ~9 concurrent requests per office — more than that slowed
+// Dentrix to 7-13s per call and produced server errors in production.
+const CONCURRENCY = 3;
 
 const idOf = (v) => (v == null ? null : String(v).split("/").pop());
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -86,6 +89,9 @@ function createHuddleSync({ db, appId }) {
     async function buildDay(apiKey, office, date, { deadline = Infinity } = {}) {
         const sessionId = ZATANNA_SESSIONS[office];
         const nowMs = Date.now();
+        const ref = col.doc(`${office}_${date}`);
+        // Lets the page show "Building…" (and keeps any previous result visible meanwhile).
+        await ref.set({ office, date, building: true, buildStartedAt: ts() }, { merge: true });
         const appts = (await listAppointmentsOn(apiKey, sessionId, date)).filter((a) => !a.cancelled && !a.broken);
 
         // One row per patient (their first appointment of the day).
@@ -124,31 +130,36 @@ function createHuddleSync({ db, appId }) {
             scheduledProduction: sum((p) => p.scheduledProduction),
             incomplete: patients.filter((p) => !p.balance && !p.insurance && !p.unscheduled).length,
         };
-        await col.doc(`${office}_${date}`).set({ office, date, patients, totals, generatedAt: ts() });
+        await ref.set({ office, date, patients, totals, generatedAt: ts(), building: false, buildError: null });
         return { office, date, ...totals };
     }
 
-    async function run(apiKey, { offices = Object.keys(ZATANNA_SESSIONS), days = [0, 1], budgetMs = 7.5 * 60e3 } = {}) {
+    /** Build one office's huddles for the given clinic dates, one after another. */
+    async function buildDays(apiKey, office, dates, { budgetMs = 8 * 60e3 } = {}) {
         const started = Date.now();
         const deadline = started + budgetMs;
-        const today = clinicDate(started);
         const results = [];
-        for (const office of offices) {
-            for (const offset of days) {
-                if (Date.now() > deadline - 60e3) break;
-                try {
-                    results.push(await buildDay(apiKey, office, addDays(today, offset), { deadline }));
-                } catch (err) {
-                    console.warn(`[huddle] ${office} +${offset}d failed:`, err.message);
-                    results.push({ office, offset, error: err.message });
-                }
+        for (const date of dates) {
+            if (Date.now() > deadline - 30e3) {
+                results.push({ office, date, skipped: "out of time" });
+                continue;
+            }
+            try {
+                results.push(await buildDay(apiKey, office, date, { deadline }));
+            } catch (err) {
+                console.warn(`[huddle] ${office} ${date} failed:`, err.message);
+                await col.doc(`${office}_${date}`).set({ building: false, buildError: err.message.slice(0, 300) }, { merge: true }).catch(() => {});
+                results.push({ office, date, error: err.message });
             }
         }
-        console.log(`[huddle] run in ${Math.round((Date.now() - started) / 1000)}s:`, JSON.stringify(results));
+        console.log(`[huddle] ${office} built in ${Math.round((Date.now() - started) / 1000)}s:`, JSON.stringify(results));
         return results;
     }
 
-    return { run, buildDay };
+    /** Today + tomorrow (clinic time) as YYYY-MM-DD. */
+    const upcomingDates = (nowMs = Date.now()) => [clinicDate(nowMs), addDays(clinicDate(nowMs), 1)];
+
+    return { buildDay, buildDays, upcomingDates };
 }
 
 module.exports = { createHuddleSync, insuranceState, appointmentFlags };
