@@ -1,0 +1,51 @@
+# Checks that keep patient data locked down. Runs on every pull request and
+# on main:
+#   - firestore-rules: tests/firestore-rules against the Firestore emulator
+#     (who can read/write what; see ARCHITECTURE.md → Access Control).
+#   - http-functions: no Cloud Function is accidentally public, and the public
+#     ones refuse requests without credentials (tests/functions).
+name: Security tests
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/firestore-rules/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('tests/firestore-rules/package-lock.json') }}
+      - run: npm ci
+        working-directory: tests/firestore-rules
+      - run: npm test
+        working-directory: tests/firestore-rules
+
+  http-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+        working-directory: functions
+      - run: node --test tests/functions/http-endpoints.test.cjs
+        env:
+          GCLOUD_PROJECT: demo-fds-hub
