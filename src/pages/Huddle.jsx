@@ -5,7 +5,7 @@
 // before they arrive. Built from Dentrix at 5:30am and 12:30pm, or on demand.
 // The tiles double as filters.
 // -----------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Users, CalendarX, UserPlus, Wallet, ShieldAlert, ClipboardList, FlaskConical, Pill, TrendingUp,
   RefreshCw, Loader2, Sunrise,
@@ -126,16 +126,42 @@ function PatientRow({ p }) {
   );
 }
 
+function BuildStatus({ building, stalled, error, startedAt, compact = false }) {
+  const tone = building ? 'bg-sky-50 border-sky-200 text-sky-800' : 'bg-amber-50 border-amber-200 text-amber-800';
+  const text = building
+    ? `Building from Dentrix… started ${minutesAgo(startedAt) || 'just now'}. This usually takes 2–5 minutes; the page updates on its own.${compact ? ' Showing the previous build meanwhile.' : ''}`
+    : stalled
+      ? "The last build didn't finish. Click Refresh now to try again."
+      : `The last build failed: ${error}. Click Refresh now to try again.`;
+  return (
+    <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-medium ${tone} ${compact ? '' : 'my-8'}`}>
+      {building && <Loader2 size={14} className="animate-spin shrink-0" />}
+      {text}
+    </div>
+  );
+}
+
 export default function Huddle({ user, onToast, officeLocation, setOfficeLocation }) {
   const [day, setDay] = useState('today');
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  // Ticks every 30s so build status and "x min ago" stay current.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30e3);
+    return () => clearInterval(t);
+  }, []);
 
   // Clinic dates are fixed when the page opens (reading the clock during render isn't allowed).
   const [dates] = useState(() => ({ today: clinicDate(new Date()), tomorrow: clinicDate(new Date(Date.now() + 86400e3)) }));
   const date = dates[day];
   const { huddle, loading, error } = useHuddle(user, officeLocation, date);
   const totals = huddle?.totals;
+  // A build runs in the background for a few minutes; treat one that started
+  // over 10 minutes ago as abandoned (the worker timed out or crashed).
+  const buildStartedMs = huddle?.buildStartedAt?.toMillis?.() ?? null;
+  const building = !!huddle?.building && (buildStartedMs == null || nowMs - buildStartedMs < 10 * 60e3);
+  const buildStalled = !!huddle?.building && !building;
   const active = FILTERS.find((f) => f.id === filter) || FILTERS[0];
   const patients = (huddle?.patients || []).filter(active.test);
 
@@ -149,7 +175,12 @@ export default function Huddle({ user, onToast, officeLocation, setOfficeLocatio
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || `Refresh failed (${res.status}).`);
-      onToast?.(data.throttled ? 'Already up to date.' : 'Huddle rebuilt from Dentrix.', 'success');
+      onToast?.(
+        data.throttled ? 'Built moments ago — already up to date.'
+          : data.alreadyBuilding ? 'Already building — this page updates when it finishes.'
+            : 'Building from Dentrix — this page updates in a few minutes.',
+        'success',
+      );
     } catch (err) {
       onToast?.(err.message || 'Refresh failed.', 'error');
     } finally {
@@ -170,11 +201,11 @@ export default function Huddle({ user, onToast, officeLocation, setOfficeLocatio
           </span>
           <button
             onClick={handleRefresh}
-            disabled={refreshing}
+            disabled={refreshing || building}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold rounded-lg text-xs transition-colors disabled:opacity-60 whitespace-nowrap"
           >
-            {refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            {refreshing ? 'Building… (up to a minute)' : 'Refresh now'}
+            {refreshing || building ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {building ? 'Building…' : 'Refresh now'}
           </button>
         </div>
       </div>
@@ -185,13 +216,18 @@ export default function Huddle({ user, onToast, officeLocation, setOfficeLocatio
         </div>
       ) : error ? (
         <p className="text-sm text-red-600">{error}</p>
-      ) : !huddle ? (
+      ) : (building || buildStalled || huddle?.buildError) && !totals ? (
+        <BuildStatus building={building} stalled={buildStalled} error={huddle?.buildError} startedAt={huddle?.buildStartedAt} />
+      ) : !huddle || !totals ? (
         <div className="text-center py-16 text-gray-400 text-sm">
           <Sunrise className="mx-auto mb-2" size={28} />
           No huddle for {day} yet — it builds at 5:30am and 12:30pm, or click Refresh now.
         </div>
       ) : (
         <>
+          {(building || buildStalled || huddle.buildError) && (
+            <BuildStatus building={building} stalled={buildStalled} error={huddle.buildError} startedAt={huddle.buildStartedAt} compact />
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
             {FILTERS.map((f) => (
               <button

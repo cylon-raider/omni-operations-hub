@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 const { onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
@@ -883,22 +884,42 @@ exports.refreshConfirmations = onRequest({ timeoutSeconds: 120, memory: "512MiB"
  * ----------------------------------------------------------------------------
  * Morning huddle (functions/huddle.js)
  * ----------------------------------------------------------------------------
- * 5:30am and 12:30pm: build today's and tomorrow's huddle for both offices.
+ * A build takes a few minutes (several Dentrix lookups per patient), so nothing
+ * waits on it directly: the schedule and the "Refresh now" button both just
+ * queue a request in huddle_requests/, and processHuddleRequest does the work
+ * in the background with a full 9 minutes. One request per office, so the two
+ * offices build in parallel without doubling the load on either Dentrix session.
  */
+const huddleRequests = () => db.collection("huddle_requests");
+const huddleDoc = (office, date) =>
+    db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("huddles").doc(`${office}_${date}`);
+
+// 5:30am and 12:30pm: today + tomorrow for both offices.
 exports.buildHuddle = onSchedule({
     schedule: "30 5,12 * * *",
     timeZone: "America/Phoenix",
+}, async () => {
+    const dates = huddleSync.upcomingDates();
+    for (const office of ["glendale", "litchfield"]) {
+        await huddleRequests().add({ office, dates, source: "schedule", requestedAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+});
+
+exports.processHuddleRequest = onDocumentCreated({
+    document: "huddle_requests/{requestId}",
     timeoutSeconds: 540,
     memory: "1GiB",
     secrets: [ZATANNA_API_KEY],
-}, async () => {
+}, async (event) => {
+    const req = event.data?.data();
+    await event.data?.ref.delete().catch(() => {});
     const apiKey = ZATANNA_API_KEY.value();
-    if (!apiKey) return console.error("[huddle] ZATANNA_API_KEY not configured; skipping.");
-    await huddleSync.run(apiKey);
+    if (!req || !apiKey || !Array.isArray(req.dates)) return;
+    await huddleSync.buildDays(apiKey, req.office, req.dates);
 });
 
-// "Refresh now" on the huddle page (signed-in users; throttled per office+day).
-exports.refreshHuddle = onRequest({ timeoutSeconds: 300, memory: "1GiB", invoker: "public", secrets: [ZATANNA_API_KEY] }, async (req, res) => {
+// "Refresh now" on the huddle page (signed-in users): queue a rebuild and return.
+exports.refreshHuddle = onRequest({ timeoutSeconds: 30, invoker: "public" }, async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -908,23 +929,27 @@ exports.refreshHuddle = onRequest({ timeoutSeconds: 300, memory: "1GiB", invoker
     try {
         const idToken = (req.get("Authorization") || "").replace(/^Bearer /, "");
         if (!idToken) return res.status(401).json({ ok: false, error: "Sign-in required." });
+        let user;
         try {
-            await admin.auth().verifyIdToken(idToken);
+            user = await admin.auth().verifyIdToken(idToken);
         } catch {
             return res.status(401).json({ ok: false, error: "Invalid or expired session — sign in again." });
         }
         const office = String(req.query.office || "").toLowerCase();
         if (!["glendale", "litchfield"].includes(office)) return res.status(400).json({ ok: false, error: "Unknown office." });
-        const offset = req.query.day === "tomorrow" ? 1 : 0;
-        const { clinicDate, addDays } = require("./treatment");
-        const date = addDays(clinicDate(Date.now()), offset);
+        const [today, tomorrow] = huddleSync.upcomingDates();
+        const date = req.query.day === "tomorrow" ? tomorrow : today;
 
-        const docRef = db.collection("artifacts").doc(APP_ID).collection("public").doc("data").collection("huddles").doc(`${office}_${date}`);
-        const last = (await docRef.get()).data()?.generatedAt?.toMillis?.() ?? 0;
-        if (Date.now() - last < 2 * 60e3) return res.status(200).json({ ok: true, throttled: true });
+        const current = (await huddleDoc(office, date).get()).data() || {};
+        const startedMs = current.buildStartedAt?.toMillis?.() ?? 0;
+        if (current.building && Date.now() - startedMs < 10 * 60e3) return res.status(200).json({ ok: true, alreadyBuilding: true });
+        const builtMs = current.generatedAt?.toMillis?.() ?? 0;
+        if (Date.now() - builtMs < 2 * 60e3) return res.status(200).json({ ok: true, throttled: true });
 
-        const result = await huddleSync.buildDay(ZATANNA_API_KEY.value(), office, date, { deadline: Date.now() + 250e3 });
-        return res.status(200).json({ ok: true, ...result });
+        // Mark it building right away so the page reacts before the worker starts.
+        await huddleDoc(office, date).set({ office, date, building: true, buildStartedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        await huddleRequests().add({ office, dates: [date], source: "refresh", requestedBy: user.email || user.uid, requestedAt: admin.firestore.FieldValue.serverTimestamp() });
+        return res.status(202).json({ ok: true, queued: true });
     } catch (e) {
         console.error("refreshHuddle error:", e);
         return res.status(500).json({ ok: false, error: e.message });

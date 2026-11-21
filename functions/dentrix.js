@@ -85,16 +85,37 @@ function unwrapZatanna(json) {
     return { ok: true, data: node };
 }
 
+/**
+ * Run one Zatanna operation. Every operation the hub calls is a read, so a
+ * transient vendor/server failure (5xx, vendor_outage, timeout) is retried once.
+ */
 async function zatanna(apiKey, sessionId, operation, body) {
-    const res = await fetch(`${ZATANNA_API_BASE}/${encodeURIComponent(sessionId)}/execute/${operation}`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    try {
+        return await zatannaOnce(apiKey, sessionId, operation, body);
+    } catch (err) {
+        if (!err.transient) throw err;
+        await new Promise((r) => setTimeout(r, 2000));
+        return zatannaOnce(apiKey, sessionId, operation, body);
+    }
+}
+
+async function zatannaOnce(apiKey, sessionId, operation, body) {
+    let res;
+    try {
+        res = await fetch(`${ZATANNA_API_BASE}/${encodeURIComponent(sessionId)}/execute/${operation}`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+    } catch (err) {
+        const e = new Error(`Zatanna ${operation} request failed: ${err.message}`);
+        e.transient = true; // timeout / network
+        throw e;
+    }
     const json = await res.json().catch(() => null);
     const out = res.ok && json ? unwrapZatanna(json) : null;
     // 202 / step_up_required = the vendor asked for a verification code and the
@@ -106,7 +127,9 @@ async function zatanna(apiKey, sessionId, operation, body) {
         const msg = out?.reason || json?.error?.message || json?.error || res.statusText;
         // Shape hint (keys only, never values) so an unexpected envelope is diagnosable from logs.
         const shape = json && typeof json === "object" ? ` [response keys: ${Object.keys(json).join(",")}]` : "";
-        throw new Error(`Zatanna ${operation} failed (${res.status}): ${String(msg).slice(0, 200)}${shape}`);
+        const e = new Error(`Zatanna ${operation} failed (${res.status}): ${String(msg).slice(0, 200)}${shape}`);
+        e.transient = res.status >= 500 || /vendor_outage|timeout|transport_error|rate_limited/i.test(String(msg));
+        throw e;
     }
     return out.data;
 }
