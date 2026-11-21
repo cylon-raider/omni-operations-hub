@@ -54,7 +54,10 @@ export function useAuth() {
       if (displayName) {
         await updateProfile(cred.user, { displayName });
       }
-      // Write user profile to Firestore
+      // Write user profile to Firestore. The account starts out unapproved —
+      // an owner or payroll admin approves it from Team → App Access (see
+      // useAccess.js). merge: useAccess may already have created a minimal
+      // profile for this account the moment it signed in.
       await setDoc(doc(db, 'users', cred.user.uid), {
         uid: cred.user.uid,
         email: email,
@@ -63,7 +66,7 @@ export function useAuth() {
         role: 'Staff',
         department: 'Unassigned',
         createdAt: new Date()
-      });
+      }, { merge: true });
     } catch (err) {
       const messages = {
         'auth/email-already-in-use': 'An account with this email already exists.',

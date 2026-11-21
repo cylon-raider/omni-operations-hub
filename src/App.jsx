@@ -10,10 +10,12 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { Menu, Clock } from 'lucide-react';
 
 import { useAuth } from './hooks/useAuth';
+import { useAccess } from './hooks/useAccess';
 import { useCalls } from './hooks/useCalls';
 import { useToast } from './hooks/useToast';
 
 import LoginScreen from './components/LoginScreen';
+import PendingApproval from './components/PendingApproval';
 import Sidebar from './components/Sidebar';
 import LiveDispatch from './pages/LiveDispatch';
 import PlaceholderPage from './pages/PlaceholderPage';
@@ -72,6 +74,13 @@ export default function App() {
   // This custom hook grabs the current user, handles the login/logout logic,
   // and tells us if Firebase is still "loading" the user state.
   const { user, loading: authLoading, error: authError, setError: setAuthError, login, register, logout, resetPassword } = useAuth();
+
+  // 1b. Approval (useAccess)
+  // Signing in isn't enough — the account must also be approved by an owner
+  // or payroll admin. Until it is, nothing below gets the user, so no data
+  // listeners start (firestore.rules would refuse them anyway).
+  const access = useAccess(user);
+  const approvedUser = access.status === 'approved' ? user : null;
   
   // 2. Global State for Location
   // We keep the "officeLocation" state here at the very top level so that 
@@ -81,7 +90,7 @@ export default function App() {
   // 3. Database Hook (useCalls)
   // This hook listens to our Firestore database in real-time. It grabs the
   // calls specific to the officeLocation we selected above.
-  const { calls, activeCalls, resolvedCalls, loading: callsLoading, addCall, updateCall, resolveCall, deleteCall } = useCalls(user, officeLocation);
+  const { calls, activeCalls, resolvedCalls, loading: callsLoading, addCall, updateCall, resolveCall, deleteCall } = useCalls(approvedUser, officeLocation);
   
   // 4. UI State
   // Controls toast notifications (popups at the bottom) and mobile menu visibility.
@@ -95,7 +104,7 @@ export default function App() {
   // Condition 1: Firebase is still loading
   // --------------------------------------------------------------------------
   // We don't know if they are logged in yet, so we show the spinning wheel.
-  if (authLoading) {
+  if (authLoading || (user && access.status === 'loading')) {
     return <LoadingSkeleton />;
   }
 
@@ -116,9 +125,16 @@ export default function App() {
   }
 
   // --------------------------------------------------------------------------
-  // Condition 3: Authenticated (Dashboard View)
+  // Condition 3: Signed in, but not approved yet
   // --------------------------------------------------------------------------
-  // If the code reaches this point, `user` is not null, meaning they are logged in.
+  if (access.status !== 'approved') {
+    return <PendingApproval user={user} onLogout={logout} />;
+  }
+
+  // --------------------------------------------------------------------------
+  // Condition 4: Approved (Dashboard View)
+  // --------------------------------------------------------------------------
+  // If the code reaches this point, `user` is signed in and approved.
   // We can safely render the Sidebar and the main page content.
   const pageTitle = PAGE_TITLES[location.pathname] || 'FDS Hub';
   const pageSubtitle = location.pathname === '/'

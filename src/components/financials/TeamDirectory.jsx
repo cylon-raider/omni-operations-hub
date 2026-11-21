@@ -2,7 +2,8 @@
 // TeamDirectory.jsx
 // -----------------------------------------------------------------------------
 // Staff directory (CRUD, admin-only edits) + App Access sub-tab where payroll
-// admins can promote/demote other logged-in fds-hub users' `payrollRole`.
+// admins approve new accounts (nobody sees practice data until approved — see
+// useAccess.js and firestore.rules) and promote/demote users' `payrollRole`.
 //
 // Pay rates live in a separate `payroll_staffRates` collection (see
 // firestore.rules): a payroll admin can read every rate, a non-admin can only
@@ -10,8 +11,8 @@
 // by the database, not just hidden in the UI.
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock, MapPin } from 'lucide-react';
+import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { Plus, Pencil, Trash2, X, Briefcase, User, Mail, ChevronRight, Shield, Lock, MapPin, UserCheck, UserX } from 'lucide-react';
 import { db } from '../../config/firebase';
 import SegmentedControl from '../SegmentedControl';
 import { DEPARTMENTS, JOB_ROLES, OWNER_EMAILS, LOCATIONS } from '../../utils/payrollConstants';
@@ -21,6 +22,17 @@ import { formatCurrency } from '../../utils/payrollCalculations';
 // work, but this keeps the id human-readable in the console for debugging.
 function generateStaffId() {
   return Date.now().toString();
+}
+
+// Owners are always approved (by email, in firestore.rules); everyone else
+// needs `approved: true` on their users doc.
+function isUserApproved(u) {
+  return OWNER_EMAILS.includes(u.email) || u.approved === true;
+}
+
+function formatSignedUp(createdAt) {
+  const d = createdAt?.toDate ? createdAt.toDate() : null;
+  return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 }
 
 export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLocation }) {
@@ -152,6 +164,32 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLoc
     await updateDoc(doc(db, 'users', targetUid), { payrollRole: newRole });
   };
 
+  // approvedBy/approvedAt record who made the latest approve/revoke decision.
+  // Revoking also drops payroll admin, so re-approving someone later doesn't
+  // silently hand their old admin rights back.
+  const [confirmRevokeUid, setConfirmRevokeUid] = useState(null);
+  const setApproval = async (target, approved) => {
+    if (target.uid === user?.uid) return;
+    try {
+      await updateDoc(doc(db, 'users', target.uid), {
+        approved,
+        approvedBy: user?.email || user?.uid,
+        approvedAt: serverTimestamp(),
+        ...(approved ? {} : { payrollRole: 'viewer' }),
+      });
+      onToast?.(approved ? `Approved ${target.email}` : `Removed access for ${target.email}`, 'success');
+    } catch (err) {
+      console.error('Error changing approval:', err);
+      onToast?.('Failed to update access', 'error');
+    } finally {
+      setConfirmRevokeUid(null);
+    }
+  };
+
+  const pendingCount = appUsers.filter((u) => !isUserApproved(u)).length;
+  const sortedAppUsers = [...appUsers].sort((a, b) =>
+    (isUserApproved(a) - isUserApproved(b)) || (a.email || '').localeCompare(b.email || ''));
+
   const groupedStaff = locationStaff.reduce((acc, member) => {
     const d = member.department || 'Other';
     acc[d] = acc[d] || [];
@@ -167,7 +205,7 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLoc
           className="w-fit"
           options={[
             { value: 'staff', label: 'Staff List' },
-            { value: 'access', label: 'App Access', icon: Shield },
+            { value: 'access', label: pendingCount ? `App Access (${pendingCount} waiting)` : 'App Access', icon: Shield },
           ]}
           value={activeTab}
           onChange={setActiveTab}
@@ -322,44 +360,95 @@ export default function TeamDirectory({ user, isPayrollAdmin, onToast, officeLoc
             <h3 className="font-black text-gray-800 text-xs uppercase tracking-wider flex items-center gap-2">
               <Shield size={16} className="text-primary-600" /> System Users
             </h3>
-            <p className="text-gray-500 text-xs mt-1">Manage who can access financial data.</p>
+            <p className="text-gray-500 text-xs mt-1">
+              Approve new sign-ups before they can see calls and patient information, and choose who can manage payroll.
+              Only approve people you recognize — anyone can create an account on the sign-in page.
+            </p>
           </div>
           <div className="divide-y divide-gray-50">
-            {appUsers.map((u) => {
+            {sortedAppUsers.map((u) => {
               const payrollRole = u.payrollRole || 'viewer';
               const isOwner = OWNER_EMAILS.includes(u.email);
+              const isSelf = u.uid === user?.uid;
+              const approved = isUserApproved(u);
+              const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ');
+              const signedUp = formatSignedUp(u.createdAt);
               // Owner emails auto-bootstrap to admin the first time *they* open this
               // page — until then they can still show as viewer, so only lock the
               // control once they're actually admin (self is always locked).
-              const isLocked = u.uid === user?.uid || (isOwner && payrollRole === 'admin');
+              const isRoleLocked = isSelf || (isOwner && payrollRole === 'admin');
               return (
-                <div key={u.uid} className="p-4 flex items-center justify-between hover:bg-gray-50/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white text-sm ${payrollRole === 'admin' ? 'bg-primary-500' : 'bg-gray-300'}`}>
+                <div key={u.uid} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${approved ? 'hover:bg-gray-50/60' : 'bg-amber-50/60'}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black text-white text-sm ${!approved ? 'bg-amber-400' : payrollRole === 'admin' ? 'bg-primary-500' : 'bg-gray-300'}`}>
                       {u.email?.[0]?.toUpperCase()}
                     </div>
-                    <div>
-                      <div className="font-bold text-gray-800 text-sm">{u.email}</div>
-                      <div className="text-[10px] text-gray-400 flex items-center gap-2 mt-0.5">
+                    <div className="min-w-0">
+                      <div className="font-bold text-gray-800 text-sm break-all">{u.email}</div>
+                      <div className="text-[10px] text-gray-400 flex flex-wrap items-center gap-2 mt-0.5">
+                        {fullName && <span className="font-semibold text-gray-500">{fullName}</span>}
+                        {signedUp && <span>Signed up {signedUp}</span>}
                         <span className="font-mono bg-gray-100 px-1.5 rounded">{u.uid.slice(0, 8)}...</span>
-                        {u.uid === user?.uid && <span className="bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full text-[9px] font-bold">YOU</span>}
+                        {isSelf && <span className="bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full text-[9px] font-bold">YOU</span>}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className={`text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider ${payrollRole === 'admin' ? 'bg-primary-50 text-primary-700 border-primary-100' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                      {payrollRole}
-                    </div>
-                    {!isLocked && (
-                      <button
-                        onClick={() => toggleAdmin(u.uid, payrollRole)}
-                        className="text-xs font-bold text-gray-500 hover:text-primary-600 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        {payrollRole === 'admin' ? 'Demote to Viewer' : 'Promote to Admin'}
-                      </button>
-                    )}
-                    {isLocked && (
-                      <div className="text-gray-300 p-2"><Lock size={16} /></div>
+                  <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                    {!approved ? (
+                      <>
+                        <div className="text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200">
+                          Waiting for approval
+                        </div>
+                        <button
+                          onClick={() => setApproval(u, true)}
+                          className="text-xs font-bold text-white bg-primary-600 hover:bg-primary-500 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          <UserCheck size={14} /> Approve
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className={`text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wider ${payrollRole === 'admin' ? 'bg-primary-50 text-primary-700 border-primary-100' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                          {payrollRole}
+                        </div>
+                        {!isRoleLocked && (
+                          <button
+                            onClick={() => toggleAdmin(u.uid, payrollRole)}
+                            className="text-xs font-bold text-gray-500 hover:text-primary-600 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            {payrollRole === 'admin' ? 'Demote to Viewer' : 'Promote to Admin'}
+                          </button>
+                        )}
+                        {!isSelf && !isOwner && (
+                          confirmRevokeUid === u.uid ? (
+                            <>
+                              <button
+                                onClick={() => setApproval(u, false)}
+                                className="text-xs font-bold text-white bg-red-600 hover:bg-red-500 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                                Confirm remove
+                              </button>
+                              <button
+                                onClick={() => setConfirmRevokeUid(null)}
+                                className="text-xs font-bold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmRevokeUid(u.uid)}
+                              title="Remove this person's access to the hub"
+                              className="text-xs font-bold text-gray-400 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                            >
+                              <UserX size={14} /> Remove access
+                            </button>
+                          )
+                        )}
+                        {isRoleLocked && (
+                          <div className="text-gray-300 p-2"><Lock size={16} /></div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
